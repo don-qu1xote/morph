@@ -11,3 +11,4 @@ function(morph_add_test name)
 endfunction()
 
 morph_add_test(tst_playlist_manager tst_playlist_manager.cpp)
+morph_add_test(tst_service_manager tst_service_manager.cpp support/FakeHttpServer.h support/FakeTools.h)

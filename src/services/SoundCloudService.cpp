@@ -6,7 +6,8 @@
 #include <QUrlQuery>
 
 SoundCloudService::SoundCloudService(NetworkManager* network, QObject* parent)
-    : BaseService(parent), net(network) {}
+    : BaseService(parent), net(network),
+      m_api(qEnvironmentVariable("MORPH_SOUNDCLOUD_API", "https://api-v2.soundcloud.com")) {}
 
 void SoundCloudService::setToken(const QString& token) {
     m_token = token;
@@ -56,7 +57,7 @@ void SoundCloudService::search(const QString& query) {
     if (m_token.isEmpty()) return;
 
     if (query.startsWith("http") && query.contains("soundcloud.com")) {
-        QUrl url("https://api-v2.soundcloud.com/resolve");
+        QUrl url(m_api + "/resolve");
         QUrlQuery q;
         q.addQueryItem("url", query);
         if (!m_token.startsWith("2-")) q.addQueryItem("client_id", m_token);
@@ -75,7 +76,7 @@ void SoundCloudService::search(const QString& query) {
         return;
     }
 
-    QUrl url("https://api-v2.soundcloud.com/search/tracks");
+    QUrl url(m_api + "/search/tracks");
     QUrlQuery q;
     q.addQueryItem("q", query);
     if (!m_token.startsWith("2-")) {
@@ -105,7 +106,7 @@ void SoundCloudService::getWave() {
 void SoundCloudService::getDailyMixes() {
     if (m_token.isEmpty()) return;
 
-    QUrl url("https://api-v2.soundcloud.com/mixed-selections");
+    QUrl url(m_api + "/mixed-selections");
     QUrlQuery q;
     if (!m_token.startsWith("2-")) {
         q.addQueryItem("client_id", m_token);
@@ -193,7 +194,7 @@ void SoundCloudService::importPlaylist(const QString& url) {
         return;
     }
 
-    QUrl apiUrl("https://api-v2.soundcloud.com/resolve");
+    QUrl apiUrl(m_api + "/resolve");
     QUrlQuery q;
     q.addQueryItem("url", url);
     if (!m_token.startsWith("2-")) {
@@ -282,7 +283,7 @@ void SoundCloudService::fetchNextPlaylistChunk(const QString& playlistName, cons
         currentChunk.append(remainingIds->takeFirst());
     }
 
-    QUrl url("https://api-v2.soundcloud.com/tracks");
+    QUrl url(m_api + "/tracks");
     QUrlQuery q;
     q.addQueryItem("ids", currentChunk.join(","));
     if (!m_token.startsWith("2-")) {
@@ -321,7 +322,7 @@ void SoundCloudService::fetchNextPlaylistChunk(const QString& playlistName, cons
 void SoundCloudService::resolveStreamUrl(const QString& trackId) {
     if (m_token.isEmpty()) return;
 
-    QUrl url("https://api-v2.soundcloud.com/tracks/" + trackId);
+    QUrl url(m_api + "/tracks/" + trackId);
     QUrlQuery q;
     if (!m_token.startsWith("2-")) {
         q.addQueryItem("client_id", m_token);

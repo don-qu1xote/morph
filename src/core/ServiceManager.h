@@ -2,6 +2,7 @@
 #define SERVICE_MANAGER_H
 
 #include <QObject>
+#include <QList>
 #include <QVariantList>
 #include "../network/NetworkManager.h"
 #include "../utils/CacheManager.h"
@@ -39,11 +40,16 @@ signals:
     void bitrateReady(const QString& trackId, int bitrate);
 
 private:
+    void attach(BaseService* service);
+    BaseService* service(const QString& name) const;
+
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
+    // имена такие же, как поле service у трека: "Yandex", "SoundCloud", "YouTube"
+    QList<QPair<QString, BaseService*>> m_services;
 };
 
 #endif

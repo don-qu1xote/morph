@@ -6,8 +6,10 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 
+// адрес API можно подменить окружением, так тесты ходят в локальный фейковый сервер
 YandexService::YandexService(NetworkManager* network, QObject* parent)
-    : BaseService(parent), net(network) {}
+    : BaseService(parent), net(network),
+      m_api(qEnvironmentVariable("MORPH_YANDEX_API", "https://api.music.yandex.net")) {}
 
 static QMap<QString, QByteArray> yandexHeaders(const QString& token) {
     QMap<QString, QByteArray> h;
@@ -81,7 +83,7 @@ void YandexService::search(const QString& query) {
     QRegularExpressionMatch trackMatch = trackRe.match(query);
     if (trackMatch.hasMatch()) {
         QString trackId = trackMatch.captured(1);
-        QUrl url("https://api.music.yandex.net/tracks/" + trackId);
+        QUrl url(m_api + "/tracks/" + trackId);
         net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
             if (reply->error() != QNetworkReply::NoError) return;
             QJsonArray tracks = QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray();
@@ -90,7 +92,7 @@ void YandexService::search(const QString& query) {
         return;
     }
 
-    QUrl url("https://api.music.yandex.net/search");
+    QUrl url(m_api + "/search");
     QUrlQuery q;
     q.addQueryItem("text", query);
     q.addQueryItem("type", "track");
@@ -112,7 +114,7 @@ void YandexService::search(const QString& query) {
 void YandexService::getCharts() {
     if (m_token.isEmpty()) return;
 
-    QUrl url("https://api.music.yandex.net/users/414787002/playlists/1076");
+    QUrl url(m_api + "/users/414787002/playlists/1076");
     net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
         if (reply->error() != QNetworkReply::NoError) return;
         QJsonArray tracks = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["tracks"].toArray();
@@ -123,7 +125,7 @@ void YandexService::getCharts() {
 void YandexService::getWave() {
     if (m_token.isEmpty()) return;
 
-    QUrl url("https://api.music.yandex.net/rotor/station/user:onyourwave/tracks");
+    QUrl url(m_api + "/rotor/station/user:onyourwave/tracks");
     net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
         if (reply->error() != QNetworkReply::NoError) return;
         QJsonArray sequence = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["sequence"].toArray();
@@ -147,7 +149,7 @@ void YandexService::importPlaylist(const QString& url) {
     if (classicMatch.hasMatch()) {
         QString user = classicMatch.captured(1);
         QString id = classicMatch.captured(2);
-        QUrl apiUrl(QString("https://api.music.yandex.net/users/%1/playlists/%2").arg(user, id));
+        QUrl apiUrl(QString("%1/users/%2/playlists/%3").arg(m_api, user, id));
         net->get(apiUrl, yandexHeaders(m_token), [this](QNetworkReply* reply) {
             if (reply->error() != QNetworkReply::NoError) {
                 emit errorOccurred("Yandex API Error: " + reply->errorString());
@@ -163,7 +165,7 @@ void YandexService::importPlaylist(const QString& url) {
     } else if (sharedMatch.hasMatch()) {
         QString uuid = sharedMatch.captured(1);
 
-        QUrl apiUrl(QString("https://api.music.yandex.net/playlist/%1").arg(uuid));
+        QUrl apiUrl(QString("%1/playlist/%2").arg(m_api, uuid));
         QUrlQuery q;
         q.addQueryItem("rich-tracks", "true");
         apiUrl.setQuery(q);
@@ -193,7 +195,7 @@ void YandexService::importPlaylist(const QString& url) {
 void YandexService::resolveStreamUrl(const QString& trackId) {
     if (m_token.isEmpty()) return;
 
-    QUrl url(QString("https://api.music.yandex.net/tracks/%1/download-info").arg(trackId));
+    QUrl url(QString("%1/tracks/%2/download-info").arg(m_api, trackId));
     net->get(url, yandexHeaders(m_token), [this, trackId](QNetworkReply* reply) {
         if (reply->error() != QNetworkReply::NoError) return;
 
@@ -231,7 +233,7 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
 void YandexService::reportPlay(const QString& trackId, const QString& albumId) {
     if (m_token.isEmpty()) return;
 
-    QUrl url("https://api.music.yandex.net/play-audio");
+    QUrl url(m_api + "/play-audio");
     QString timestamp = QDateTime::currentDateTimeUtc().toString("yyyy-MM-ddTHH:mm:ss.zzzZ");
 
     QUrlQuery q;

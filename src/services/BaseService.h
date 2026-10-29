@@ -27,6 +27,7 @@ signals:
     void dailyMixesReady(const QString& serviceName, const QVariantList& playlists);
     void playlistImported(const QString& name, const QString& coverUrl, const QVariantList& tracks);
     void errorOccurred(const QString& message);
+    void bitrateReady(const QString& trackId, int bitrate);
 };
 
 #endif

@@ -19,8 +19,6 @@ public:
     void getDailyMixes() override;
     void reportPlay(const QString& trackId, const QString& albumId) override;
     void importPlaylist(const QString& url) override;
-signals:
-    void bitrateReady(const QString& trackId, int bitrate);
 
 private:
     void fetchStreamUrl(const QString& trackId, const QString& transcodingUrl, int bitrate);
@@ -30,6 +28,7 @@ private:
 
 private:
     NetworkManager* net;
+    QString m_api;
     QString m_token;
     QString m_quality = "128";
     QMap<QString, QString> m_trackLinks;

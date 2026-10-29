@@ -1,195 +1,92 @@
 #include "ServiceManager.h"
 
-ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent) : QObject(parent), net(net), cache(cache) {
+ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent)
+    : QObject(parent), net(net), cache(cache) {
     connect(net, &NetworkManager::errorOccurred, this, &ServiceManager::errorOccurred);
     yandex = new YandexService(net, this);
     soundcloud = new SoundCloudService(net, this);
     youtube = new YouTubeService(this);
 
-    auto processTracks = [this](QVariantList& results) {
-        for (int i = 0; i < results.size(); ++i) {
-            QVariantMap track = results[i].toMap();
+    m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
+    for (const auto& [name, s] : m_services) attach(s);
+}
+
+// Раньше тут было по три одинаковых connect на каждый сигнал, по одному на сервис.
+// Теперь сервис подключается один раз, а новый добавляется одной строкой в m_services
+void ServiceManager::attach(BaseService* s) {
+    auto withDuration = [](QVariantList tracks) {
+        for (QVariant& t : tracks) {
+            QVariantMap track = t.toMap();
             if (!track.contains("durationMs")) track["durationMs"] = 0;
-            results[i] = track;
+            t = track;
         }
+        return tracks;
     };
 
-    connect(yandex, &BaseService::searchResultsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit searchResultsReady(serviceName, results);
+    connect(s, &BaseService::searchResultsReady, this,
+            [this, withDuration](const QString& name, const QVariantList& r) {
+                emit searchResultsReady(name, withDuration(r));
+            });
+    connect(s, &BaseService::chartsReady, this, [this, withDuration](const QString& name, const QVariantList& r) {
+        emit chartsReady(name, withDuration(r));
     });
-    connect(soundcloud, &BaseService::searchResultsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit searchResultsReady(serviceName, results);
+    connect(s, &BaseService::waveReady, this, [this, withDuration](const QString& name, const QVariantList& r) {
+        emit waveReady(name, withDuration(r));
     });
-    connect(youtube, &BaseService::searchResultsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit searchResultsReady(serviceName, results);
-    });
-
-    connect(yandex, &BaseService::chartsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit chartsReady(serviceName, results);
-    });
-    connect(soundcloud, &BaseService::chartsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit chartsReady(serviceName, results);
-    });
-    connect(youtube, &BaseService::chartsReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit chartsReady(serviceName, results);
-    });
-
-    connect(yandex, &BaseService::waveReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit waveReady(serviceName, results);
-    });
-    connect(soundcloud, &BaseService::waveReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit waveReady(serviceName, results);
-    });
-    connect(youtube, &BaseService::waveReady, [this, processTracks](const QString& serviceName, QVariantList results) {
-        processTracks(results);
-        emit waveReady(serviceName, results);
-    });
-
-    connect(yandex, &BaseService::dailyMixesReady, [this](const QString& serviceName, QVariantList playlists) {
-        for (int i = 0; i < playlists.size(); ++i) {
-            QVariantMap pl = playlists[i].toMap();
-            QString coverUrl = pl["coverUrl"].toString();
-            if (!coverUrl.isEmpty()) {
-                this->cache->cacheCover(coverUrl);
-            }
+    connect(s, &BaseService::dailyMixesReady, this, [this](const QString& name, const QVariantList& playlists) {
+        for (const QVariant& pl : playlists) {
+            QString coverUrl = pl.toMap()["coverUrl"].toString();
+            if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
         }
-        emit dailyMixesReady(serviceName, playlists);
+        emit dailyMixesReady(name, playlists);
     });
-    connect(soundcloud, &BaseService::dailyMixesReady, [this](const QString& serviceName, QVariantList playlists) {
-        for (int i = 0; i < playlists.size(); ++i) {
-            QVariantMap pl = playlists[i].toMap();
-            QString coverUrl = pl["coverUrl"].toString();
-            if (!coverUrl.isEmpty()) {
-                this->cache->cacheCover(coverUrl);
-            }
-        }
-        emit dailyMixesReady(serviceName, playlists);
-    });
-    connect(youtube, &BaseService::dailyMixesReady, [this](const QString& serviceName, QVariantList playlists) {
-        for (int i = 0; i < playlists.size(); ++i) {
-            QVariantMap pl = playlists[i].toMap();
-            QString coverUrl = pl["coverUrl"].toString();
-            if (!coverUrl.isEmpty()) {
-                this->cache->cacheCover(coverUrl);
-            }
-        }
-        emit dailyMixesReady(serviceName, playlists);
-    });
+    connect(s, &BaseService::playlistImported, this,
+            [this, withDuration](const QString& name, const QString& coverUrl, const QVariantList& tracks) {
+                if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
+                emit playlistImported(name, coverUrl, withDuration(tracks));
+            });
 
-    connect(yandex, &BaseService::streamUrlReady, [this](const QString& trackId, const QString& streamUrl) {
-        emit streamUrlReady(trackId, streamUrl);
-    });
-    connect(soundcloud, &BaseService::streamUrlReady, [this](const QString& trackId, const QString& streamUrl) {
-        emit streamUrlReady(trackId, streamUrl);
-    });
-    connect(youtube, &BaseService::streamUrlReady, [this](const QString& trackId, const QString& streamUrl) {
-        emit streamUrlReady(trackId, streamUrl);
-    });
+    connect(s, &BaseService::streamUrlReady, this, &ServiceManager::streamUrlReady);
+    connect(s, &BaseService::bitrateReady, this, &ServiceManager::bitrateReady);
+    connect(s, &BaseService::errorOccurred, this, &ServiceManager::errorOccurred);
+}
 
-    connect(yandex, &BaseService::playlistImported, [this, processTracks](const QString& name, QString coverUrl, QVariantList tracks) {
-        if (!coverUrl.isEmpty()) {
-            this->cache->cacheCover(coverUrl);
-        }
-        processTracks(tracks);
-        emit playlistImported(name, coverUrl, tracks);
-    });
-    connect(soundcloud, &BaseService::playlistImported, [this, processTracks](const QString& name, QString coverUrl, QVariantList tracks) {
-        if (!coverUrl.isEmpty()) {
-            this->cache->cacheCover(coverUrl);
-        }
-        processTracks(tracks);
-        emit playlistImported(name, coverUrl, tracks);
-    });
-    connect(youtube, &BaseService::playlistImported, [this, processTracks](const QString& name, QString coverUrl, QVariantList tracks) {
-        if (!coverUrl.isEmpty()) {
-            this->cache->cacheCover(coverUrl);
-        }
-        processTracks(tracks);
-        emit playlistImported(name, coverUrl, tracks);
-    });
-
-    connect(yandex, &YandexService::bitrateReady, this, &ServiceManager::bitrateReady);
-    connect(soundcloud, &SoundCloudService::bitrateReady, this, &ServiceManager::bitrateReady);
-    connect(youtube, &YouTubeService::bitrateReady, this, &ServiceManager::bitrateReady);
-
-    connect(yandex, &BaseService::errorOccurred, this, &ServiceManager::errorOccurred);
-    connect(soundcloud, &BaseService::errorOccurred, this, &ServiceManager::errorOccurred);
-    connect(youtube, &BaseService::errorOccurred, this, &ServiceManager::errorOccurred);
+BaseService* ServiceManager::service(const QString& name) const {
+    for (const auto& [serviceName, s] : m_services) {
+        if (serviceName.compare(name, Qt::CaseInsensitive) == 0) return s;
+    }
+    return nullptr;
 }
 
 void ServiceManager::search(const QString& query, const QString& serviceName) {
-    if (serviceName == "all" || serviceName == "yandex") {
-        yandex->search(query);
-    }
-    if (serviceName == "all" || serviceName == "soundcloud") {
-        soundcloud->search(query);
-    }
-    if (serviceName == "all" || serviceName == "youtube") {
-        youtube->search(query);
+    for (const auto& [name, s] : m_services) {
+        if (serviceName == "all" || name.compare(serviceName, Qt::CaseInsensitive) == 0) s->search(query);
     }
 }
 
 void ServiceManager::getCharts() {
-    yandex->getCharts();
-    soundcloud->getCharts();
-    youtube->getCharts();
+    for (const auto& [name, s] : m_services) s->getCharts();
 }
 
 void ServiceManager::getWave() {
-    yandex->getWave();
-    soundcloud->getWave();
-    youtube->getWave();
+    for (const auto& [name, s] : m_services) s->getWave();
 }
 
 void ServiceManager::getDailyMixes() {
-    yandex->getDailyMixes();
-    soundcloud->getDailyMixes();
-    youtube->getDailyMixes();
+    for (const auto& [name, s] : m_services) s->getDailyMixes();
 }
 
 void ServiceManager::resolve(const QString& serviceName, const QString& trackId) {
-    if (cache->isTrackCached(trackId)) {
+    BaseService* s = service(serviceName);
+    if (cache->isTrackCached(trackId) || (s && s->isTrackCached(trackId))) {
         emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
         return;
     }
-
-    if (serviceName == "Yandex") {
-        if (yandex->isTrackCached(trackId)) {
-             emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
-             return;
-        }
-        yandex->resolveStreamUrl(trackId);
-    } else if (serviceName == "SoundCloud") {
-        if (soundcloud->isTrackCached(trackId)) {
-             emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
-             return;
-        }
-        soundcloud->resolveStreamUrl(trackId);
-    } else if (serviceName == "YouTube") {
-        if (youtube->isTrackCached(trackId)) {
-             emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
-             return;
-        }
-        youtube->resolveStreamUrl(trackId);
-    }
+    if (s) s->resolveStreamUrl(trackId);
 }
 
 void ServiceManager::reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId) {
-    if (serviceName == "Yandex") {
-        yandex->reportPlay(trackId, albumId);
-    } else if (serviceName == "SoundCloud") {
-        soundcloud->reportPlay(trackId, albumId);
-    } else if (serviceName == "YouTube") {
-        youtube->reportPlay(trackId, albumId);
-    }
+    if (BaseService* s = service(serviceName)) s->reportPlay(trackId, albumId);
 }
 
 void ServiceManager::importPlaylist(const QString& url) {

@@ -20,9 +20,6 @@ public:
     void importPlaylist(const QString& url) override;
     bool isTrackCached(const QString& trackId) override;
 
-signals:
-    void bitrateReady(const QString& trackId, int bitrate);
-
 private:
     void runYtDlp(const QStringList& args, const QString& type, const QString& id = QString());
     QVariantMap parseYoutubeTrack(const QJsonObject& obj);
