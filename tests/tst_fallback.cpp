@@ -48,12 +48,16 @@ private slots:
         qputenv("MORPH_SOUNDCLOUD_API", soundcloudApi.url().toUtf8());
         qputenv("YTDLP_LOG", dir.filePath("yt-dlp.log").toUtf8());
         // на запросы с NOPE yt-dlp ничего не находит
-        tools.add("yt-dlp", "echo \"$@\" >> \"$YTDLP_LOG\"\n"
-                            "case \"$*\" in *NOPE*) exit 1 ;; esac\n"
-                            "echo '{\"url\": \"https://cdn.example/found.m4a\", \"abr\": 129.5}'\n");
+        tools.add("yt-dlp",
+                  "echo \"$@\" >> \"$YTDLP_LOG\"\n"
+                  "case \"$*\" in *NOPE*) exit 1 ;; esac\n"
+                  "echo \"{\\\"url\\\": \\\"${YTDLP_URL:-https://cdn.example/found.m4a}\\\", \\\"abr\\\": 129.5}\"\n");
     }
 
-    void init() { QFile::remove(dir.filePath("yt-dlp.log")); }
+    void init() {
+        QFile::remove(dir.filePath("yt-dlp.log"));
+        qunsetenv("YTDLP_URL");
+    }
 
     void removedYandexTrackPlaysFromYouTube() {
         yandexApi.on("GET", "/tracks/101/download-info", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
@@ -211,6 +215,58 @@ private slots:
         QVERIFY(failed.count() == 1 || failed.wait());
         qputenv("PATH", path);
         QCOMPARE(failed[0][0].toString(), QString("1"));
+    }
+
+    // следующий трек нашёлся заранее и сразу скачан: потом он стартует с диска
+    void prefetchedRemovedTrackIsDownloadedAhead() {
+        yandexApi.on("GET", "/tracks/505/download-info", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
+        yandexApi.on("GET", "/tracks/505", [](const HttpRequest&) {
+            QJsonObject track{{"id", 505}, {"title", "Ahead"}, {"artists", QJsonArray{QJsonObject{{"name", "Early"}}}}};
+            return jsonResult(QJsonArray{track});
+        });
+        yandexApi.on("GET", "/googlevideo.com/505.m4a",
+                     [](const HttpRequest&) { return HttpResponse{200, QByteArray(8192, 'a')}; });
+        qputenv("YTDLP_URL", (yandexApi.url() + "/googlevideo.com/505.m4a").toUtf8());
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        cache.clearTrackCache();
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("token");
+        QSignalSpy streams(&services, &ServiceManager::streamUrlReady);
+        QSignalSpy cached(&cache, &CacheManager::trackCached);
+
+        services.prefetch("Yandex", "505");
+        QVERIFY(streams.wait());
+        QVERIFY(!cached.isEmpty() || cached.wait());
+        QCOMPARE(cached[0][0].toString(), QString("505"));
+        QVERIFY(cache.isTrackCached("505"));
+    }
+
+    // заранее искали и не нашли: молчим, а когда трек включат, скажем
+    void prefetchMissIsQuietUntilPlayed() {
+        serveSoundCloud(false);
+        yandexApi.on("GET", "/tracks/606/download-info", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
+        yandexApi.on("GET", "/tracks/606", [](const HttpRequest&) {
+            QJsonObject track{{"id", 606}, {"title", "NOPE"}, {"artists", QJsonArray{QJsonObject{{"name", "Quiet"}}}}};
+            return jsonResult(QJsonArray{track});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("token");
+        services.setSoundCloudClientId("client");
+        QSignalSpy errors(&services, &ServiceManager::errorOccurred);
+
+        services.prefetch("Yandex", "606");
+        QVERIFY(soundcloudApi.waitFor("/search/tracks"));
+        QTest::qWait(200);
+        QCOMPARE(errors.size(), 0);
+
+        services.resolve("Yandex", "606");
+        QTRY_COMPARE(errors.size(), 1);
+        QVERIFY(errors[0][0].toString().contains("Quiet - NOPE"));
     }
 };
 

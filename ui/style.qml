@@ -209,6 +209,7 @@ ApplicationWindow {
     property int loadedTracksCount: 0
     property bool isRestoringSession: false
     property bool isRecovering: false
+    property string recoveredTrackId: ""
     property bool isSearching: false
     property string toastMessage: ""
     property string toastTitle: "MORPH SYSTEM"
@@ -263,6 +264,12 @@ ApplicationWindow {
         if (coversExpanded) loadDetailedCovers()
     }
 
+    // у ссылок YouTube срок жизни записан в самом адресе: expire=<время в секундах>
+    function isStreamUrlFresh(url) {
+        var expire = /[?&]expire=(\d+)/.exec(url)
+        return !expire || Number(expire[1]) - Date.now() / 1000 > 60
+    }
+
     function preResolveNext() {
         if (currentTrackIndex < 0) return
         var model = currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
@@ -271,7 +278,7 @@ ApplicationWindow {
             if (!nextTrack || !nextTrack.id) return
             var service = nextTrack.service || (nextTrack.coverUrl && nextTrack.coverUrl.indexOf("yandex") !== -1 ? "Yandex" : "SoundCloud")
             if (!streamUrlCache[nextTrack.id]) {
-                MorphServices.resolve(service, nextTrack.id)
+                MorphServices.prefetch(service, nextTrack.id)
             }
         }
     }
@@ -517,7 +524,10 @@ function playTrack(track, index) {
         currentTrack = cleanTrack
         currentTrackIndex = index
         
+        recoveredTrackId = ""
         var streamUrl = streamUrlCache[cleanTrack.id]
+        // файл из кэша надёжнее ссылки: она могла протухнуть, а он стартует сразу
+        if (MorphCache.isTrackCached(cleanTrack.id) || (streamUrl && !isStreamUrlFresh(streamUrl))) streamUrl = undefined
         if (streamUrl) {
             if (streamUrl.startsWith("file://") && !MorphCache.isTrackCached(cleanTrack.id)) {
                 delete streamUrlCache[cleanTrack.id]
@@ -3780,13 +3790,14 @@ function playTrack(track, index) {
         target: MorphAudio
         function onFinished() { if (repeatOne) { MorphAudio.position = 0; MorphAudio.resume() } else playNext() }
         function onError(errorString) {
-            if (currentTrack && currentTrack.service === "SoundCloud") {
-                if (errorString.indexOf("Forbidden") !== -1) {
-                    isRecovering = true
-                    lastKnownPosition = MorphAudio.position
-                    MorphServices.resolve(currentTrack.service, currentTrack.id)
-                }
-            }
+            // Ссылки на поток подписаны на время и IP: SoundCloud отвечает Forbidden,
+            // YouTube после смены VPN тоже. Ищем поток заново, один раз на трек
+            if (!currentTrack || !currentTrack.id || recoveredTrackId === currentTrack.id) return
+            recoveredTrackId = currentTrack.id
+            delete streamUrlCache[currentTrack.id]
+            isRecovering = true
+            lastKnownPosition = MorphAudio.position
+            MorphServices.resolve(currentTrack.service, currentTrack.id)
         }
     }
 

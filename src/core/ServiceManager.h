@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QHash>
 #include <QList>
+#include <QSet>
 #include <QVariantList>
 #include "../network/NetworkManager.h"
 #include "../utils/CacheManager.h"
@@ -23,6 +24,7 @@ public slots:
     void getWave();
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
+    void prefetch(const QString& serviceName, const QString& trackId);
     void reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId);
     void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
                       double lengthSeconds, bool completed);
@@ -57,6 +59,8 @@ private:
     QString m_yandexToken;
     // id трека, которого нет в Яндексе, и что по нему искать дальше по цепочке
     QHash<QString, QString> m_fallbackQueries;
+    // ищутся заранее и ещё не включены
+    QSet<QString> m_prefetching;
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;

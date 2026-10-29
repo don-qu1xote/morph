@@ -24,6 +24,7 @@
   - Runs through rotor sessions and reports start, skip (with real listened seconds), finish, like and dislike back to Yandex.
   - Likes are synced with your Yandex account both ways.
 - **Removed Tracks Fallback**: If Yandex no longer serves a track, morph finds the same song on YouTube, then on SoundCloud, and plays it under the original track, so playlists and likes keep working.
+- **Fast YouTube Start**: The next track is found and downloaded while the current one plays, and yt-dlp asks YouTube with a single lightweight client, so tracks from YouTube start almost as fast as Yandex ones.
 - **Text List Import**: Paste a path to a `.txt` file with `Artist - Title` lines into the import field to get a playlist played through search.
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
 - **Daily Mixes**: Access personalized daily playlists from SoundCloud directly on the home screen.

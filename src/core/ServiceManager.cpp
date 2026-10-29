@@ -22,15 +22,22 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     // так QML ничего не замечает, а кэш потом отдаёт её уже офлайн
     connect(yandex, &YandexService::streamUnavailable, this, [this](const QString& trackId, const QString& query) {
         m_fallbackQueries[trackId] = query;
-        youtube->resolveByQuery(query, trackId);
+        youtube->resolveByQuery(query, trackId, m_prefetching.contains(trackId));
     });
     connect(youtube, &YouTubeService::resolveFailed, this, &ServiceManager::fallBackToSoundCloud);
     connect(soundcloud, &SoundCloudService::notFound, this, [this](const QString& trackId, const QString& query) {
         m_fallbackQueries.remove(trackId);
-        emit errorOccurred("Not found on YouTube or SoundCloud: " + query);
+        // про трек, который ещё не включали, молчим: включат, тогда и скажем
+        if (!m_prefetching.remove(trackId)) emit errorOccurred("Not found on YouTube or SoundCloud: " + query);
     });
-    connect(this, &ServiceManager::streamUrlReady, this,
-            [this](const QString& trackId) { m_fallbackQueries.remove(trackId); });
+    connect(this, &ServiceManager::streamUrlReady, this, [this](const QString& trackId, const QString& url) {
+        m_fallbackQueries.remove(trackId);
+        // поток с YouTube через VPN начинает играть заметно позже яндексовского,
+        // поэтому следующий трек сразу ложится в кэш и потом стартует с диска
+        if (m_prefetching.remove(trackId) && url.contains("googlevideo.com") && this->cache->savesTracks()) {
+            this->cache->cacheTrack(trackId, url);
+        }
+    });
 
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
@@ -110,12 +117,24 @@ void ServiceManager::getDailyMixes() {
 }
 
 void ServiceManager::resolve(const QString& serviceName, const QString& trackId) {
+    m_prefetching.remove(trackId);
     BaseService* s = service(serviceName);
     if (cache->isTrackCached(trackId) || (s && s->isTrackCached(trackId))) {
         emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
         return;
     }
     if (s) s->resolveStreamUrl(trackId);
+}
+
+// Следующий трек ищется, пока играет текущий. Яндекс и SoundCloud отвечают
+// одним быстрым запросом, а yt-dlp встаёт в очередь за тем, что уже включено
+void ServiceManager::prefetch(const QString& serviceName, const QString& trackId) {
+    BaseService* s = service(serviceName);
+    if (!s || trackId.isEmpty() || cache->isTrackCached(trackId) || s->isTrackCached(trackId)) return;
+
+    m_prefetching.insert(trackId);
+    if (s == youtube) youtube->prefetch(trackId);
+    else s->resolveStreamUrl(trackId);
 }
 
 void ServiceManager::reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId) {

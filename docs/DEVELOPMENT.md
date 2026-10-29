@@ -74,6 +74,26 @@ yt-dlp подменяется shell-скриптом через `FakeTools`, т�
 Те же переменные годятся, чтобы посмотреть трафик приложения через свой
 прокси: `MORPH_YANDEX_API=http://127.0.0.1:8080 ./build/morph`.
 
+## yt-dlp и скорость YouTube
+
+Поток с YouTube ищется так ([ADR-0008](adr/0008-yt-dlp-queue-and-fast-client.md)):
+сначала клиентом `visionos`, которому не нужен deno, при промахе с
+настройками yt-dlp по умолчанию. Какой путь быстрее в твоей сети, покажет
+
+```bash
+scripts/ytdlp-bench.sh
+```
+
+Чтобы попробовать другой вариант, не пересобирая, задай его переменной:
+
+```bash
+open --env MORPH_YTDLP_FAST="youtube:player_client=visionos;player_skip=webpage,configs" build/morph.app
+open --env MORPH_YTDLP_FAST= build/morph.app    # без быстрого пути
+```
+
+YouTube часто меняется, а yt-dlp за ним успевает: если треки с YouTube
+перестали играть, сначала `brew upgrade yt-dlp`.
+
 ## Обновление с upstream
 
 ```bash

@@ -17,3 +17,4 @@ morph_add_test(tst_yandex_service tst_yandex_service.cpp support/FakeHttpServer.
 morph_add_test(tst_fallback tst_fallback.cpp support/FakeHttpServer.h support/FakeTools.h)
 morph_add_test(tst_soundcloud_service tst_soundcloud_service.cpp support/FakeHttpServer.h)
 morph_add_test(tst_wave_mixer tst_wave_mixer.cpp support/FakeHttpServer.h support/FakeTools.h)
+morph_add_test(tst_youtube_service tst_youtube_service.cpp support/FakeTools.h)

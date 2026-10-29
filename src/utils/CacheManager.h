@@ -40,6 +40,7 @@ public:
     Q_INVOKABLE void setLimit(qint64 bytes);
 
     void setSaveTracks(bool save);
+    bool savesTracks() const { return m_saveTracks; }
     void setSaveCovers(bool save);
 
 signals:

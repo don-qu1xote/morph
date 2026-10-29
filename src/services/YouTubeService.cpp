@@ -13,6 +13,16 @@ static const char* kUserAgent =
 static const char* kAudioFormat = "bestaudio[ext=m4a]/bestaudio";
 static const QString kQueryPrefix = "ytq-";
 
+// Быстрый путь за потоком: клиент visionos отдаёт аудио без JS-плеера, то есть
+// без запуска deno и без трёх запросов к разным клиентам, как yt-dlp делает по
+// умолчанию. Пустая MORPH_YTDLP_FAST выключает его, другое значение подменяет
+static QString fastExtractorArgs() {
+    return qEnvironmentVariable("MORPH_YTDLP_FAST", "youtube:player_client=visionos");
+}
+
+// столько промахов быстрого пути подряд, и до перезапуска он больше не пробуется
+static const int kFastFailureLimit = 3;
+
 // поиск, чарты, импорт и миксы: список треков без потоков, по JSON на строку
 static QStringList listArgs() {
     return {"--print-json", "--flat-playlist", "--quiet", "--no-warnings", "--user-agent", kUserAgent};
@@ -41,18 +51,94 @@ void YouTubeService::resolveStreamUrl(const QString& trackId) {
         resolveByQuery(query, trackId);
         return;
     }
-
-    QStringList args;
-    args << "-f" << kAudioFormat << "--quiet" << "--no-warnings" << "--user-agent" << kUserAgent << "--print-json"
-         << QString("https://www.youtube.com/watch?v=%1").arg(trackId);
-    runYtDlp(args, "resolve", trackId);
+    requestStream(trackId, QString("https://www.youtube.com/watch?v=%1").arg(trackId), false);
 }
 
-void YouTubeService::resolveByQuery(const QString& query, const QString& trackId) {
+void YouTubeService::prefetch(const QString& trackId) {
+    QString query = queryFromTrackId(trackId);
+    if (!query.isEmpty()) {
+        resolveByQuery(query, trackId, true);
+        return;
+    }
+    requestStream(trackId, QString("https://www.youtube.com/watch?v=%1").arg(trackId), true);
+}
+
+void YouTubeService::resolveByQuery(const QString& query, const QString& trackId, bool prefetch) {
+    requestStream(trackId, QString("ytsearch1:%1").arg(query), prefetch);
+}
+
+// Один трек ищет один yt-dlp: раньше предзагрузка и клик по тому же треку
+// запускали два процесса. Включённый трек идёт без очереди, а предзагрузка
+// ждёт, пока ничего не ищется, чтобы не отнимать у него процессор и сеть
+void YouTubeService::requestStream(const QString& trackId, const QString& target, bool prefetch) {
+    auto it = m_streams.find(trackId);
+    if (it != m_streams.end() && (prefetch || !it->prefetch)) return;
+
+    // играет один трек: прошлые клики ещё ищутся, но уже на правах предзагрузки
+    if (!prefetch) {
+        for (auto job = m_streams.begin(); job != m_streams.end(); ++job) job->prefetch = true;
+    }
+
+    if (it != m_streams.end()) {
+        it->prefetch = false;
+        if (!it->running) {
+            m_prefetchOrder.removeAll(trackId);
+            startStream(trackId);
+        }
+        return;
+    }
+
+    m_streams.insert(trackId, {target, prefetch, false});
+    if (!prefetch) {
+        startStream(trackId);
+        return;
+    }
+    m_prefetchOrder.append(trackId);
+    startWaitingPrefetch();
+}
+
+void YouTubeService::startWaitingPrefetch() {
+    for (const StreamJob& job : std::as_const(m_streams)) {
+        if (job.running) return;
+    }
+    if (!m_prefetchOrder.isEmpty()) startStream(m_prefetchOrder.takeFirst());
+}
+
+void YouTubeService::startStream(const QString& trackId) {
+    m_streams[trackId].running = true;
+    runStream(trackId, !fastExtractorArgs().isEmpty() && m_fastFailures < kFastFailureLimit);
+}
+
+void YouTubeService::runStream(const QString& trackId, bool fast) {
     QStringList args;
-    args << "-f" << kAudioFormat << "--quiet" << "--no-warnings" << "--no-playlist" << "--user-agent" << kUserAgent
-         << "--print-json" << QString("ytsearch1:%1").arg(query);
-    runYtDlp(args, "resolve", trackId);
+    args << "-f" << kAudioFormat << "--quiet" << "--no-warnings" << "--no-playlist" << "--user-agent" << kUserAgent;
+    if (fast) args << "--extractor-args" << fastExtractorArgs();
+    args << "--print-json" << m_streams.value(trackId).target;
+
+    runYtDlp(args, [this, trackId, fast](bool ok, const QString& output) {
+        QJsonObject obj = QJsonDocument::fromJson(output.toUtf8()).object();
+        QString url = ok ? obj["url"].toString() : QString();
+        // быстрый клиент отдаёт не всё (детский контент, проверка на бота):
+        // тот же запрос ещё раз, но с клиентами по умолчанию
+        if (url.isEmpty() && fast) {
+            ++m_fastFailures;
+            runStream(trackId, false);
+            return;
+        }
+        if (fast) m_fastFailures = 0;
+        finishStream(trackId, url, qRound(obj["abr"].toDouble()));
+    });
+}
+
+void YouTubeService::finishStream(const QString& trackId, const QString& url, int bitrate) {
+    m_streams.remove(trackId);
+    if (url.isEmpty()) {
+        emit resolveFailed(trackId);
+    } else {
+        emit streamUrlReady(trackId, url);
+        if (bitrate > 0) emit bitrateReady(trackId, bitrate);
+    }
+    startWaitingPrefetch();
 }
 
 void YouTubeService::getCharts() {
@@ -95,21 +181,8 @@ void YouTubeService::radioFor(const QString& query, int count) {
     });
 }
 
-void YouTubeService::runYtDlp(const QStringList& args, const QString& type, const QString& id) {
-    runYtDlp(args, [this, type, id](bool ok, const QString& output) {
-        if (type == "resolve") {
-            QJsonObject obj = QJsonDocument::fromJson(output.toUtf8()).object();
-            QString url = obj["url"].toString();
-            if (!ok || url.isEmpty()) {
-                emit resolveFailed(id);
-                return;
-            }
-            emit streamUrlReady(id, url);
-            int bitrate = qRound(obj["abr"].toDouble());
-            if (bitrate > 0) emit bitrateReady(id, bitrate);
-            return;
-        }
-
+void YouTubeService::runYtDlp(const QStringList& args, const QString& type) {
+    runYtDlp(args, [this, type](bool ok, const QString& output) {
         if (!ok) return;
         QVariantList results = parseJsonLines(output);
         if (type == "search") emit searchResultsReady("YouTube", results);
