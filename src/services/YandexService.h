@@ -4,6 +4,7 @@
 #include "BaseService.h"
 #include "../network/NetworkManager.h"
 #include <QHash>
+#include <QStringList>
 
 class YandexService : public BaseService {
     Q_OBJECT
@@ -24,6 +25,12 @@ public:
 private:
     void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
     QVariantList parseYandexTracks(const QJsonArray& tracksArray);
+    QString fullTrackId(const QString& trackId) const;
+
+    void startWaveSession();
+    void handleWaveBatch(const QJsonObject& result);
+    void getWaveFromStation();
+    void sendWaveFeedback(const QString& type, const QString& trackId = QString(), double playedSeconds = -1);
 
 private:
     NetworkManager* net;
@@ -35,6 +42,12 @@ private:
     // id и длительность запоминаем, когда трек проходит через parseYandexTracks
     QHash<QString, QString> m_albumIds;
     QHash<QString, qint64> m_durations;
+
+    QString m_waveSession;
+    QString m_waveBatch;
+    QHash<QString, QString> m_waveBatchOf;
+    QStringList m_waveQueue;
+    bool m_waveLoading = false;
 };
 
 #endif

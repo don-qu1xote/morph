@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QUrlQuery>
 #include <QRegularExpression>
+#include <QDateTime>
 
 // адрес API можно подменить окружением, так тесты ходят в локальный фейковый сервер
 YandexService::YandexService(NetworkManager* network, QObject* parent)
@@ -25,7 +26,12 @@ static QMap<QString, QByteArray> yandexHeaders(const QString& token) {
 }
 
 void YandexService::setToken(const QString& token) {
+    if (token == m_token) return;
+
     m_token = token;
+    m_waveSession.clear();
+    m_waveBatchOf.clear();
+    m_waveQueue.clear();
 }
 
 void YandexService::setAudioQuality(const QString& quality) {
@@ -78,6 +84,11 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
     return tracksList;
 }
 
+QString YandexService::fullTrackId(const QString& trackId) const {
+    QString albumId = m_albumIds.value(trackId);
+    return albumId.isEmpty() ? trackId : trackId + ":" + albumId;
+}
+
 void YandexService::search(const QString& query) {
     if (m_token.isEmpty()) return;
 
@@ -124,15 +135,121 @@ void YandexService::getCharts() {
     });
 }
 
+// Волна через сессии, как в нынешних клиентах Яндекса: сессия выдаёт партии треков
+// и принимает фидбек (старт, скип, дослушал), по нему волна и подстраивается.
+// Старая станция осталась запасным вариантом, если сессия не создалась
 void YandexService::getWave() {
     if (m_token.isEmpty()) return;
 
+    // QML просит волну из нескольких мест подряд, вторая параллельная сессия ни к чему
+    if (m_waveLoading) return;
+    m_waveLoading = true;
+
+    if (m_waveSession.isEmpty()) {
+        startWaveSession();
+        return;
+    }
+
+    QJsonObject body;
+    body["queue"] = QJsonArray::fromStringList(m_waveQueue);
+
+    QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+    headers["Content-Type"] = "application/json";
+    QUrl url(QString("%1/rotor/session/%2/tracks").arg(m_api, m_waveSession));
+    net->post(
+        url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers,
+        [this](QNetworkReply* reply) {
+            if (reply->error() != QNetworkReply::NoError) {
+                getWaveFromStation();
+                return;
+            }
+
+            QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+            if (result["unknownSession"].toBool()) {
+                m_waveSession.clear();
+                startWaveSession();
+                return;
+            }
+            handleWaveBatch(result);
+        },
+        false);
+}
+
+void YandexService::startWaveSession() {
+    QJsonObject body;
+    body["seeds"] = QJsonArray{"user:onyourwave"};
+    body["includeTracksInResponse"] = true;
+    if (!m_waveQueue.isEmpty()) body["queue"] = QJsonArray::fromStringList(m_waveQueue);
+
+    QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+    headers["Content-Type"] = "application/json";
+    QUrl url(m_api + "/rotor/session/new");
+    net->post(
+        url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers,
+        [this](QNetworkReply* reply) {
+            if (reply->error() != QNetworkReply::NoError) {
+                getWaveFromStation();
+                return;
+            }
+
+            QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+            m_waveSession = result["radioSessionId"].toString();
+            if (m_waveSession.isEmpty()) {
+                getWaveFromStation();
+                return;
+            }
+
+            handleWaveBatch(result);
+            sendWaveFeedback("radioStarted");
+        },
+        false);
+}
+
+void YandexService::handleWaveBatch(const QJsonObject& result) {
+    m_waveLoading = false;
+    m_waveBatch = result["batchId"].toString();
+
+    QVariantList tracks = parseYandexTracks(result["sequence"].toArray());
+    for (const QVariant& t : tracks) {
+        QString id = t.toMap()["id"].toString();
+        m_waveBatchOf[id] = m_waveBatch;
+        m_waveQueue.append(fullTrackId(id));
+    }
+
+    // серверу нужен список уже выданного, чтобы не повторяться, хвоста хватает
+    while (m_waveQueue.size() > 100) m_waveQueue.removeFirst();
+
+    emit waveReady("Yandex", tracks);
+}
+
+void YandexService::getWaveFromStation() {
     QUrl url(m_api + "/rotor/station/user:onyourwave/tracks");
     net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
+        m_waveLoading = false;
         if (reply->error() != QNetworkReply::NoError) return;
         QJsonArray sequence = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["sequence"].toArray();
         emit waveReady("Yandex", parseYandexTracks(sequence));
     });
+}
+
+void YandexService::sendWaveFeedback(const QString& type, const QString& trackId, double playedSeconds) {
+    if (m_waveSession.isEmpty()) return;
+
+    QJsonObject event;
+    event["type"] = type;
+    event["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    if (!trackId.isEmpty()) event["trackId"] = fullTrackId(trackId);
+    if (playedSeconds >= 0) event["totalPlayedSeconds"] = playedSeconds;
+
+    QJsonObject body;
+    body["event"] = event;
+    QString batchId = trackId.isEmpty() ? m_waveBatch : m_waveBatchOf.value(trackId, m_waveBatch);
+    if (!batchId.isEmpty()) body["batchId"] = batchId;
+
+    QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+    headers["Content-Type"] = "application/json";
+    QUrl url(QString("%1/rotor/session/%2/feedback").arg(m_api, m_waveSession));
+    net->post(url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers, [](QNetworkReply*) {}, false);
 }
 
 void YandexService::getDailyMixes() {
@@ -230,14 +347,14 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
 
 #include <QCryptographicHash>
 #include <QXmlStreamReader>
-#include <QDateTime>
 
 void YandexService::reportPlay(const QString& trackId, const QString& albumId) {
     // Раньше тут в момент старта уходил play-audio с длиной 180 и нулём прослушанных
     // секунд, а вместо id альбома его название. Теперь статистика уходит в
     // reportListen, когда понятно, сколько трек на самом деле слушали
-    Q_UNUSED(trackId);
     Q_UNUSED(albumId);
+    if (m_token.isEmpty()) return;
+    if (m_waveBatchOf.contains(trackId)) sendWaveFeedback("trackStarted", trackId);
 }
 
 void YandexService::reportListen(const QString& trackId, double playedSeconds, double lengthSeconds, bool completed) {
@@ -262,6 +379,8 @@ void YandexService::reportListen(const QString& trackId, double playedSeconds, d
     headers["Content-Type"] = "application/x-www-form-urlencoded";
     net->post(
         QUrl(m_api + "/play-audio"), q.toString(QUrl::FullyEncoded).toUtf8(), headers, [](QNetworkReply*) {}, false);
+
+    if (m_waveBatchOf.contains(trackId)) sendWaveFeedback(completed ? "trackFinished" : "skip", trackId, playedSeconds);
 }
 
 void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate) {

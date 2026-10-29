@@ -55,6 +55,11 @@ public:
         m_handlers[QString::fromLatin1(method) + " " + path] = handler;
     }
 
+    void reset() {
+        requests.clear();
+        m_handlers.clear();
+    }
+
     QList<HttpRequest> requestsTo(const QString& path) const {
         QList<HttpRequest> found;
         for (const HttpRequest& r : requests) {

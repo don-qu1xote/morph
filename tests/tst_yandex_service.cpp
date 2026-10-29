@@ -28,9 +28,19 @@ class TestYandexService : public QObject {
         QVERIFY(results.wait());
     }
 
+    // сессия s1 с двумя треками, партия b1
+    void serveWave() {
+        api.on("POST", "/rotor/session/new", [](const HttpRequest&) {
+            return jsonResult(QJsonObject{{"radioSessionId", "s1"},
+                                          {"batchId", "b1"},
+                                          {"sequence", QJsonArray{QJsonObject{{"track", track(1, 10, "One")}},
+                                                                  QJsonObject{{"track", track(2, 20, "Two")}}}}});
+        });
+    }
+
 private slots:
     void initTestCase() { qputenv("MORPH_YANDEX_API", api.url().toUtf8()); }
-    void init() { api.requests.clear(); }
+    void init() { api.reset(); }
 
     void listenReportsRealSecondsAndAlbumId() {
         NetworkManager net;
@@ -71,6 +81,140 @@ private slots:
         yandex.reportPlay("101", "");
         QTest::qWait(200);
         QVERIFY(api.requestsTo("/play-audio").isEmpty());
+    }
+    void waveStartsSessionAndReportsRadioStarted() {
+        serveWave();
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        QCOMPARE(wave[0][1].toList().size(), 2);
+
+        HttpRequest start = api.requestsTo("/rotor/session/new").last();
+        QCOMPARE(start.json()["seeds"].toArray(), QJsonArray{"user:onyourwave"});
+
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback"));
+        QJsonObject feedback = api.requestsTo("/rotor/session/s1/feedback").last().json();
+        QCOMPARE(feedback["event"].toObject()["type"].toString(), QString("radioStarted"));
+        QCOMPARE(feedback["batchId"].toString(), QString("b1"));
+    }
+
+    void waveTrackEventsCarryRealSeconds() {
+        serveWave();
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback"));
+
+        yandex.reportPlay("1", "");
+        yandex.reportListen("1", 12.5, 0, false);
+        yandex.reportPlay("2", "");
+        yandex.reportListen("2", 199, 200, true);
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback", 5));
+
+        QList<HttpRequest> events = api.requestsTo("/rotor/session/s1/feedback").mid(1);
+        QStringList types;
+        for (const HttpRequest& r : events) types << r.json()["event"].toObject()["type"].toString();
+        QCOMPARE(types, QStringList({"trackStarted", "skip", "trackStarted", "trackFinished"}));
+
+        QJsonObject skip = events[1].json()["event"].toObject();
+        QCOMPARE(skip["trackId"].toString(), QString("1:10"));
+        QCOMPARE(skip["totalPlayedSeconds"].toDouble(), 12.5);
+        QCOMPARE(events[1].json()["batchId"].toString(), QString("b1"));
+    }
+
+    void nextBatchSendsQueueOfIssuedTracks() {
+        serveWave();
+        api.on("POST", "/rotor/session/s1/tracks", [](const HttpRequest&) {
+            return jsonResult(QJsonObject{{"batchId", "b2"},
+                                          {"sequence", QJsonArray{QJsonObject{{"track", track(3, 30, "Three")}}}}});
+        });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        yandex.getWave();
+        QVERIFY(wave.wait());
+
+        QJsonArray queue = api.requestsTo("/rotor/session/s1/tracks").last().json()["queue"].toArray();
+        QCOMPARE(queue, QJsonArray({"1:10", "2:20"}));
+
+        yandex.reportPlay("3", "");
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
+        QCOMPARE(api.requestsTo("/rotor/session/s1/feedback").last().json()["batchId"].toString(), QString("b2"));
+    }
+
+    void expiredSessionStartsNewOne() {
+        serveWave();
+        api.on("POST", "/rotor/session/s1/tracks",
+               [](const HttpRequest&) { return jsonResult(QJsonObject{{"unknownSession", true}}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        yandex.getWave();
+        QVERIFY(wave.wait());
+
+        QCOMPARE(api.requestsTo("/rotor/session/new").size(), 2);
+        QCOMPARE(api.requestsTo("/rotor/session/new").last().json()["queue"].toArray().size(), 2);
+    }
+
+    void parallelRequestsMakeOneSession() {
+        serveWave();
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.getWave();
+        yandex.getWave();
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        QTest::qWait(100);
+        QCOMPARE(api.requestsTo("/rotor/session/new").size(), 1);
+    }
+
+    void brokenSessionFallsBackToStationWithoutFeedback() {
+        api.on("POST", "/rotor/session/new", [](const HttpRequest&) { return HttpResponse{500, "{}"}; });
+        api.on("GET", "/rotor/station/user:onyourwave/tracks", [](const HttpRequest&) {
+            return jsonResult(QJsonObject{{"sequence", QJsonArray{QJsonObject{{"track", track(9, 90, "Nine")}}}}});
+        });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        QCOMPARE(wave[0][1].toList().size(), 1);
+
+        yandex.reportPlay("9", "");
+        QTest::qWait(150);
+        for (const HttpRequest& r : api.requests) QVERIFY(!r.path.endsWith("/feedback"));
+    }
+
+    void searchTrackGetsNoWaveFeedback() {
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        loadTracks(yandex, {track(5, 50, "Five")});
+
+        yandex.reportPlay("5", "");
+        QTest::qWait(150);
+        for (const HttpRequest& r : api.requests) QVERIFY(!r.path.endsWith("/feedback"));
     }
 };
 
