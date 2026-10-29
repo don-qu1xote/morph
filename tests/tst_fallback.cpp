@@ -20,7 +20,8 @@ class TestFallback : public QObject {
 
     QString ytDlpCalls() const {
         QFile log(dir.filePath("yt-dlp.log"));
-        log.open(QIODevice::ReadOnly);
+        // лога нет, значит yt-dlp ни разу не звали
+        if (!log.open(QIODevice::ReadOnly)) return {};
         return QString::fromUtf8(log.readAll());
     }
 
@@ -81,7 +82,7 @@ private slots:
 
     void textListBecomesPlayableYouTubePlaylist() {
         QFile list(dir.filePath("missing.txt"));
-        list.open(QIODevice::WriteOnly);
+        QVERIFY(list.open(QIODevice::WriteOnly));
         list.write("Zamay - Неошансон\n\nZamay - Неошансон\nTitle Only\nВалентин Дядька - Лондон против всех - Live\n");
         list.close();
 
@@ -123,7 +124,7 @@ private slots:
 
     void emptyFileIsAnError() {
         QFile list(dir.filePath("empty.txt"));
-        list.open(QIODevice::WriteOnly);
+        QVERIFY(list.open(QIODevice::WriteOnly));
         list.write("\n\n");
         list.close();
 

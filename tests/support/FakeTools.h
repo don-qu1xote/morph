@@ -12,7 +12,7 @@ public:
 
     void add(const QString& name, const QByteArray& script) {
         QFile file(m_dir.filePath(name));
-        file.open(QIODevice::WriteOnly);
+        if (!file.open(QIODevice::WriteOnly)) qFatal("FakeTools: cannot write %s", qPrintable(file.fileName()));
         file.write("#!/bin/sh\n" + script);
         file.close();
         file.setPermissions(file.permissions() | QFileDevice::ExeOwner);
