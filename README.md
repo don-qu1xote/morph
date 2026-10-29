@@ -5,9 +5,12 @@
   <img src="https://img.shields.io/badge/Qt-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt" />
   <img src="https://img.shields.io/badge/QML-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="QML" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL_v3-blue.svg?style=for-the-badge" alt="License" /></a>
-  <img src="https://img.shields.io/badge/Platform-Linux-blue?style=for-the-badge" alt="Linux" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-blue?style=for-the-badge" alt="Linux | macOS" />
+  <a href="https://github.com/don-qu1xote/morph/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/don-qu1xote/morph/ci.yml?style=for-the-badge&label=CI" alt="CI" /></a>
   <a href="https://www.donationalerts.com/r/lizapropanol"><img src="https://img.shields.io/badge/Donate-DonationAlerts-orange?style=for-the-badge&logo=donate&logoColor=white" alt="Donate" /></a>
 </p>
+
+> This is a fork of [lizapropanol/morph](https://github.com/lizapropanol/morph). On top of upstream it adds a macOS build, honest sync with Yandex Music (real listening stats, My Vibe feedback, two-way likes), playback of tracks removed from Yandex via YouTube and SoundCloud, unit tests and CI. See [docs/architecture.md](docs/architecture.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 **morph** is a sleek, modern desktop music player built with C++ and Qt/QML. It integrates seamlessly with **Yandex Music**, **SoundCloud** and **YouTube Music**, providing a unified and aesthetically pleasing interface for your music library, charts, and personalized radio streams.
 
@@ -17,6 +20,10 @@
 
 - **Triple Service Integration**: Search and play tracks from Yandex Music, SoundCloud and YouTube Music in a single interface.
 - **My Vibe (Personalized Wave)**: Direct integration with Yandex Music's algorithmic radio, complete with listening telemetry so your recommendations keep improving.
+  - Runs through rotor sessions and reports start, skip (with real listened seconds), finish, like and dislike back to Yandex.
+  - Likes are synced with your Yandex account both ways.
+- **Removed Tracks Fallback**: If Yandex no longer serves a track, morph finds the same song on YouTube, then on SoundCloud, and plays it under the original track, so playlists and likes keep working.
+- **Text List Import**: Paste a path to a `.txt` file with `Artist - Title` lines into the import field to get a playlist played through search.
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
 - **Daily Mixes**: Access personalized daily playlists from SoundCloud directly on the home screen.
 - **Artist Profiles**: Browse detailed artist profiles displaying a biography, high-resolution avatar, list of albums, and tracks directly from the player.
@@ -144,6 +151,10 @@ To unlock full functionality, you need to provide your authentication tokens in 
 - `src/settings/`: JSON-based local storage management for playlists, likes, tokens, and history.
 - `src/audio/`: Low-level audio engine integration.
 - `ui/`: The frontend layer, containing `style.qml` and associated assets.
+- `tests/`: QtTest unit tests, services run against a local fake HTTP server.
+- `macos/`: Bundle Info.plist and icon.
+- `docker/`: Build and test environment used locally and in CI.
+- `docs/`: Architecture, development guide and ADRs.
 
 ---
 
