@@ -1,4 +1,5 @@
 #include <QDateTime>
+#include <QJsonArray>
 #include <QSignalSpy>
 #include <QTest>
 
