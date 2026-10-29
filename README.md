@@ -87,6 +87,18 @@ make
 ./morph
 ```
 
+#### macOS
+```bash
+# deno is required by yt-dlp for YouTube
+brew install qt cmake openssl yt-dlp ffmpeg deno
+
+git clone https://github.com/don-qu1xote/morph.git
+cd morph
+make run      # Debug build, opens build/morph.app
+make dmg      # Release build packed into build-release/morph.dmg
+```
+Media keys, AirPods controls and the Now Playing widget work through `MPRemoteCommandCenter`.
+
 #### Windows
 ```powershell
 # Prerequisites: Qt 6.8+ (MSVC 2022 x64), OpenSSL 3.x, Inno Setup 6 (optional, for installer)

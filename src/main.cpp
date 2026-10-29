@@ -8,6 +8,11 @@
 #include "utils/PathProvider.h"
 
 int main(int argc, char *argv[]) {
+#ifdef Q_OS_MACOS
+    // .app из Finder стартует с урезанным PATH, без brew-папок не найдутся
+    // yt-dlp, ffprobe и deno, без которого yt-dlp больше не ходит в ютуб
+    qputenv("PATH", "/opt/homebrew/bin:/usr/local/bin:" + qgetenv("PATH"));
+#endif
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     QImageReader::setAllocationLimit(64);
     QApplication app(argc, argv);

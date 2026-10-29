@@ -12,6 +12,12 @@ ifneq ($(QT_PREFIX),)
 CMAKE_FLAGS += -DCMAKE_PREFIX_PATH=$(QT_PREFIX)
 endif
 
+ifeq ($(shell uname),Darwin)
+RUN := open $(BUILD_DIR)/morph.app
+else
+RUN := ./$(BUILD_DIR)/morph
+endif
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -28,11 +34,16 @@ build: configure ## собрать
 
 .PHONY: run
 run: build ## собрать и запустить
-	./$(BUILD_DIR)/morph
+	$(RUN)
 
 .PHONY: test
 test: build ## собрать и прогнать тесты
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
+
+.PHONY: dmg
+dmg: ## релизная сборка и morph.dmg (macOS)
+	$(MAKE) build BUILD_DIR=build-release BUILD_TYPE=Release
+	cmake --build build-release --target dmg
 
 .PHONY: fmt
 fmt: ## отформатировать строки, изменённые относительно upstream
@@ -51,5 +62,5 @@ hooks: ## включить git-хуки из .githooks
 	git config core.hooksPath .githooks
 
 .PHONY: clean
-clean: ## удалить сборку
-	rm -rf $(BUILD_DIR)
+clean: ## удалить сборки
+	rm -rf $(BUILD_DIR) build-release

@@ -29,12 +29,19 @@ QByteArray CryptoUtils::getSystemKey() {
 
 QByteArray CryptoUtils::getSystemIdentifier() {
     QByteArray id;
+#ifdef Q_OS_MACOS
+    // /etc/machine-id на маке нет, а hostname там меняется от сети к сети,
+    // и после смены вайфая токен бы уже не расшифровался.
+    // machineUniqueId на маке это IOPlatformUUID, он постоянный
+    id = QSysInfo::machineUniqueId();
+#else
     QFile machineId("/etc/machine-id");
     if (machineId.open(QIODevice::ReadOnly)) {
         id = machineId.readAll().trimmed();
         machineId.close();
     }
     id += QSysInfo::machineHostName().toUtf8();
+#endif
     id += QSysInfo::productType().toUtf8();
     id += QSysInfo::currentCpuArchitecture().toUtf8();
     return id;

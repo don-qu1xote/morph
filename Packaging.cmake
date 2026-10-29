@@ -112,4 +112,21 @@ if(UNIX AND NOT APPLE)
     set(CPACK_GENERATOR "DEB")
 endif()
 
+if(APPLE)
+    get_filename_component(_qt_bin_dir "${Qt6Core_DIR}/../../../bin" ABSOLUTE)
+    find_program(MACDEPLOYQT_EXECUTABLE NAMES macdeployqt macdeployqt6 HINTS "${_qt_bin_dir}" "/opt/homebrew/bin")
+
+    if(MACDEPLOYQT_EXECUTABLE)
+        # Qt и qml-модули кладутся внутрь .app, на выходе morph.dmg рядом с ним
+        add_custom_target(dmg
+            COMMAND ${MACDEPLOYQT_EXECUTABLE} "$<TARGET_BUNDLE_DIR:morph>" -qmldir=${CMAKE_SOURCE_DIR}/ui -dmg
+            DEPENDS morph
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "Packing morph.app into morph.dmg"
+        )
+    else()
+        message(STATUS "macdeployqt not found, dmg target is disabled")
+    endif()
+endif()
+
 include(CPack)

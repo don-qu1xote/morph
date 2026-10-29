@@ -35,7 +35,13 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia DBus Widgets Svg Core5Compat REQUIRED)
+# на маке MPRIS не нужен, а QtDBus в brew-сборке Qt может и не оказаться
+if(APPLE)
+    enable_language(OBJCXX)
+    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia Widgets Svg Core5Compat REQUIRED)
+else()
+    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia DBus Widgets Svg Core5Compat REQUIRED)
+endif()
 find_package(OpenSSL REQUIRED)
 
 # Всё, кроме main, живёт в статической библиотеке: её же линкуют тесты
@@ -59,9 +65,19 @@ add_library(morph_core STATIC
     src/settings/HistoryManager.h src/settings/HistoryManager.cpp
     src/settings/StyleManager.h src/settings/StyleManager.cpp
     src/core/MprisManager.h src/core/MprisManager.cpp
-    src/core/MprisRootAdaptor.h src/core/MprisPlayerAdaptor.h src/core/MprisPlayerAdaptor.cpp
     src/utils/DiscordManager.h src/utils/DiscordManager.cpp
 )
+
+if(APPLE)
+    target_sources(morph_core PRIVATE src/core/MacNowPlaying.h src/core/MacNowPlaying.mm)
+    set_source_files_properties(src/core/MacNowPlaying.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(morph_core PUBLIC "-framework Foundation" "-framework MediaPlayer")
+else()
+    target_sources(morph_core PRIVATE
+        src/core/MprisRootAdaptor.h src/core/MprisPlayerAdaptor.h src/core/MprisPlayerAdaptor.cpp
+    )
+    target_link_libraries(morph_core PUBLIC Qt6::DBus)
+endif()
 
 target_include_directories(morph_core PUBLIC src)
 target_compile_definitions(morph_core PUBLIC
@@ -75,7 +91,6 @@ target_link_libraries(morph_core PUBLIC
     Qt6::Qml
     Qt6::Network
     Qt6::Multimedia
-    Qt6::DBus
     Qt6::Widgets
     Qt6::Svg
     Qt6::Core5Compat
@@ -95,6 +110,20 @@ target_link_libraries(morph PRIVATE morph_core)
 if(WIN32)
     set_target_properties(morph PROPERTIES WIN32_EXECUTABLE TRUE)
     target_sources(morph PRIVATE morph.rc)
+endif()
+
+if(APPLE)
+    target_sources(morph PRIVATE macos/morph.icns)
+    set_source_files_properties(macos/morph.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(morph PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/macos/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME "morph"
+        MACOSX_BUNDLE_ICON_FILE "morph.icns"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.don-qu1xote.morph"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${BUILD_NUMBER}"
+    )
 endif()
 
 if(MORPH_BUILD_TESTS)
