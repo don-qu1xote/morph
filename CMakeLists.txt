@@ -1,18 +1,32 @@
 cmake_minimum_required(VERSION 3.16)
 project(morph VERSION 0.2.4 LANGUAGES CXX)
 
+option(MORPH_BUILD_TESTS "Build unit tests" ON)
+
 if(UNIX AND NOT APPLE AND CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/build_number.txt")
+# Номер сборки из git. Раньше configure дописывал его в build_number.txt,
+# и после любой сборки рабочее дерево было грязным. Файл остаётся для
+# сборки из архива без .git
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE BUILD_NUMBER
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
+if(NOT BUILD_NUMBER AND EXISTS "${CMAKE_SOURCE_DIR}/build_number.txt")
     file(READ "${CMAKE_SOURCE_DIR}/build_number.txt" BUILD_NUMBER)
     string(STRIP "${BUILD_NUMBER}" BUILD_NUMBER)
-    math(EXPR BUILD_NUMBER "${BUILD_NUMBER} + 1")
-else()
+endif()
+if(NOT BUILD_NUMBER)
     set(BUILD_NUMBER "1")
 endif()
-file(WRITE "${CMAKE_SOURCE_DIR}/build_number.txt" "${BUILD_NUMBER}")
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,9 +38,8 @@ set(CMAKE_AUTOUIC ON)
 find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia DBus Widgets Svg Core5Compat REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-add_executable(morph
-    resources.qrc
-    src/main.cpp
+# Всё, кроме main, живёт в статической библиотеке: её же линкуют тесты
+add_library(morph_core STATIC
     src/core/Application.h src/core/Application.cpp
     src/utils/PathProvider.h src/utils/PathProvider.cpp
     src/utils/QmlHighlighter.h src/utils/QmlHighlighter.cpp
@@ -50,18 +63,13 @@ add_executable(morph
     src/utils/DiscordManager.h src/utils/DiscordManager.cpp
 )
 
-target_include_directories(morph PRIVATE src)
-target_compile_definitions(morph PRIVATE 
+target_include_directories(morph_core PUBLIC src)
+target_compile_definitions(morph_core PUBLIC
     MORPH_BUILD_NUMBER="${BUILD_NUMBER}"
     MORPH_VERSION="${PROJECT_VERSION}"
 )
 
-if(WIN32)
-    set_target_properties(morph PROPERTIES WIN32_EXECUTABLE TRUE)
-    target_sources(morph PRIVATE morph.rc)
-endif()
-
-target_link_libraries(morph PRIVATE
+target_link_libraries(morph_core PUBLIC
     Qt6::Core
     Qt6::Quick
     Qt6::Qml
@@ -75,7 +83,23 @@ target_link_libraries(morph PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(morph PRIVATE dwmapi)
+    target_link_libraries(morph_core PUBLIC dwmapi)
+endif()
+
+add_executable(morph
+    resources.qrc
+    src/main.cpp
+)
+target_link_libraries(morph PRIVATE morph_core)
+
+if(WIN32)
+    set_target_properties(morph PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_sources(morph PRIVATE morph.rc)
+endif()
+
+if(MORPH_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 include(Packaging.cmake)

@@ -272,10 +272,10 @@ void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, i
         while (!xml.atEnd()) {
             xml.readNext();
             if (xml.isStartElement()) {
-                if (xml.name() == "host") host = xml.readElementText();
-                else if (xml.name() == "path") path = xml.readElementText();
-                else if (xml.name() == "ts") ts = xml.readElementText();
-                else if (xml.name() == "s") s = xml.readElementText();
+                if (xml.name() == u"host") host = xml.readElementText();
+                else if (xml.name() == u"path") path = xml.readElementText();
+                else if (xml.name() == u"ts") ts = xml.readElementText();
+                else if (xml.name() == u"s") s = xml.readElementText();
             }
         }
 
