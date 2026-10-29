@@ -18,8 +18,17 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     // трек убрали из Яндекса: та же песня с ютуба, но под яндексовским id,
     // так QML ничего не замечает, а кэш потом отдаёт её уже офлайн
-    connect(yandex, &YandexService::streamUnavailable, this,
-            [this](const QString& trackId, const QString& query) { youtube->resolveByQuery(query, trackId); });
+    connect(yandex, &YandexService::streamUnavailable, this, [this](const QString& trackId, const QString& query) {
+        m_fallbackQueries[trackId] = query;
+        youtube->resolveByQuery(query, trackId);
+    });
+    connect(youtube, &YouTubeService::resolveFailed, this, &ServiceManager::fallBackToSoundCloud);
+    connect(soundcloud, &SoundCloudService::notFound, this, [this](const QString& trackId, const QString& query) {
+        m_fallbackQueries.remove(trackId);
+        emit errorOccurred("Not found on YouTube or SoundCloud: " + query);
+    });
+    connect(this, &ServiceManager::streamUrlReady, this,
+            [this](const QString& trackId) { m_fallbackQueries.remove(trackId); });
 
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
@@ -134,6 +143,14 @@ void ServiceManager::importPlaylist(const QString& url) {
     } else {
         emit errorOccurred("Unsupported URL. Use Yandex, SoundCloud or YouTube.");
     }
+}
+
+// на ютубе не нашлось: пробуем SoundCloud. Касается только треков из цепочки
+// фолбэка и импортированных списков, обычный ютуб-трек сюда не уходит
+void ServiceManager::fallBackToSoundCloud(const QString& trackId) {
+    QString query = m_fallbackQueries.value(trackId, YouTubeService::queryFromTrackId(trackId));
+    if (query.isEmpty()) return;
+    soundcloud->resolveByQuery(query, trackId);
 }
 
 void ServiceManager::importTextFile(const QString& path) {

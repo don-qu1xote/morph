@@ -2,6 +2,7 @@
 #define SERVICE_MANAGER_H
 
 #include <QObject>
+#include <QHash>
 #include <QList>
 #include <QVariantList>
 #include "../network/NetworkManager.h"
@@ -47,9 +48,12 @@ signals:
 private:
     void attach(BaseService* service);
     void importTextFile(const QString& path);
+    void fallBackToSoundCloud(const QString& trackId);
     BaseService* service(const QString& name) const;
 
     QString m_yandexToken;
+    // id трека, которого нет в Яндексе, и что по нему искать дальше по цепочке
+    QHash<QString, QString> m_fallbackQueries;
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;

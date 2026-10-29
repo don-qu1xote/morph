@@ -20,8 +20,15 @@ public:
     void reportPlay(const QString& trackId, const QString& albumId) override;
     void importPlaylist(const QString& url) override;
 
+    // найти по "артист - название" и отдать поток под чужим id
+    void resolveByQuery(const QString& query, const QString& trackId);
+
+signals:
+    void notFound(const QString& trackId, const QString& query);
+
 private:
     void fetchStreamUrl(const QString& trackId, const QString& transcodingUrl, int bitrate);
+    void resolveAs(const QString& soundcloudId, const QString& trackId);
     void fetchPlaylistTracksMetadata(const QString& playlistName, const QString& coverUrl, const QStringList& trackIds);
     void fetchNextPlaylistChunk(const QString& playlistName, const QString& coverUrl, QStringList* remainingIds, QVariantList* allTracks, const QStringList& originalIds);
     QVariantList parseSoundCloudTracks(const QJsonArray& tracks);

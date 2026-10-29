@@ -104,18 +104,21 @@ void YandexService::withUid(std::function<void()> next) {
     m_uidWaiters.append(next);
     if (m_uidWaiters.size() > 1) return;
 
-    net->get(QUrl(m_api + "/account/status"), yandexHeaders(m_token), [this](QNetworkReply* reply) {
-        QList<std::function<void()>> waiters = std::exchange(m_uidWaiters, {});
-        if (reply->error() != QNetworkReply::NoError) return;
+    net->get(
+        QUrl(m_api + "/account/status"), yandexHeaders(m_token),
+        [this](QNetworkReply* reply) {
+            QList<std::function<void()>> waiters = std::exchange(m_uidWaiters, {});
+            if (reply->error() != QNetworkReply::NoError) return;
 
-        QJsonObject account =
-            QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["account"].toObject();
-        QString uid = account["uid"].toVariant().toString();
-        if (uid.isEmpty() || uid == "0") return;
+            QJsonObject account =
+                QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["account"].toObject();
+            QString uid = account["uid"].toVariant().toString();
+            if (uid.isEmpty() || uid == "0") return;
 
-        m_uid = uid;
-        for (const auto& waiter : waiters) waiter();
-    }, false);
+            m_uid = uid;
+            for (const auto& waiter : waiters) waiter();
+        },
+        false);
 }
 
 void YandexService::setLiked(const QString& trackId, bool liked) {
@@ -142,36 +145,39 @@ void YandexService::fetchLikes() {
 
     withUid([this]() {
         QUrl url(QString("%1/users/%2/likes/tracks").arg(m_api, m_uid));
-        net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
-            if (reply->error() != QNetworkReply::NoError) return;
+        net->get(
+            url, yandexHeaders(m_token),
+            [this](QNetworkReply* reply) {
+                if (reply->error() != QNetworkReply::NoError) return;
 
-            QJsonArray shortTracks = QJsonDocument::fromJson(reply->readAll())
-                                         .object()["result"]
-                                         .toObject()["library"]
-                                         .toObject()["tracks"]
-                                         .toArray();
+                QJsonArray shortTracks = QJsonDocument::fromJson(reply->readAll())
+                                             .object()["result"]
+                                             .toObject()["library"]
+                                             .toObject()["tracks"]
+                                             .toArray();
 
-            QList<QJsonObject> sorted;
-            for (const auto& v : shortTracks) sorted.append(v.toObject());
-            std::stable_sort(sorted.begin(), sorted.end(), [](const QJsonObject& a, const QJsonObject& b) {
-                return a["timestamp"].toString() > b["timestamp"].toString();
-            });
+                QList<QJsonObject> sorted;
+                for (const auto& v : shortTracks) sorted.append(v.toObject());
+                std::stable_sort(sorted.begin(), sorted.end(), [](const QJsonObject& a, const QJsonObject& b) {
+                    return a["timestamp"].toString() > b["timestamp"].toString();
+                });
 
-            QStringList ids;
-            QStringList fullIds;
-            for (const QJsonObject& t : sorted) {
-                QString id = t["id"].toVariant().toString();
-                QString albumId = t["albumId"].toVariant().toString();
-                ids.append(id);
-                fullIds.append(albumId.isEmpty() ? id : id + ":" + albumId);
-            }
+                QStringList ids;
+                QStringList fullIds;
+                for (const QJsonObject& t : sorted) {
+                    QString id = t["id"].toVariant().toString();
+                    QString albumId = t["albumId"].toVariant().toString();
+                    ids.append(id);
+                    fullIds.append(albumId.isEmpty() ? id : id + ":" + albumId);
+                }
 
-            if (ids.isEmpty()) {
-                emit likesFetched({}, {});
-                return;
-            }
-            fetchTracksChunk(fullIds, ids, 0, std::make_shared<QVariantList>());
-        }, false);
+                if (ids.isEmpty()) {
+                    emit likesFetched({}, {});
+                    return;
+                }
+                fetchTracksChunk(fullIds, ids, 0, std::make_shared<QVariantList>());
+            },
+            false);
     });
 }
 
@@ -187,25 +193,26 @@ void YandexService::fetchTracksChunk(const QStringList& fullIds, const QStringLi
 
     QMap<QString, QByteArray> headers = yandexHeaders(m_token);
     headers["Content-Type"] = "application/x-www-form-urlencoded";
-    net->post(QUrl(m_api + "/tracks"), body.toString(QUrl::FullyEncoded).toUtf8(), headers,
-              [this, fullIds, allIds, chunk, from, result](QNetworkReply* reply) {
-                  // если хоть одна пачка не пришла, ничего не сливаем, иначе половина лайков пропадёт
-                  if (reply->error() != QNetworkReply::NoError) return;
+    net->post(
+        QUrl(m_api + "/tracks"), body.toString(QUrl::FullyEncoded).toUtf8(), headers,
+        [this, fullIds, allIds, chunk, from, result](QNetworkReply* reply) {
+            // если хоть одна пачка не пришла, ничего не сливаем, иначе половина лайков пропадёт
+            if (reply->error() != QNetworkReply::NoError) return;
 
-                  QJsonArray tracks = QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray();
-                  QHash<QString, QVariant> byId;
-                  for (const QVariant& t : parseYandexTracks(tracks)) byId[t.toMap()["id"].toString()] = t;
+            QJsonArray tracks = QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray();
+            QHash<QString, QVariant> byId;
+            for (const QVariant& t : parseYandexTracks(tracks)) byId[t.toMap()["id"].toString()] = t;
 
-                  for (const QString& fullId : chunk) {
-                      QString id = fullId.section(':', 0, 0);
-                      if (byId.contains(id)) result->append(byId[id]);
-                  }
+            for (const QString& fullId : chunk) {
+                QString id = fullId.section(':', 0, 0);
+                if (byId.contains(id)) result->append(byId[id]);
+            }
 
-                  int next = from + chunkSize;
-                  if (next < fullIds.size()) fetchTracksChunk(fullIds, allIds, next, result);
-                  else emit likesFetched(*result, allIds);
-              },
-              false);
+            int next = from + chunkSize;
+            if (next < fullIds.size()) fetchTracksChunk(fullIds, allIds, next, result);
+            else emit likesFetched(*result, allIds);
+        },
+        false);
 }
 
 void YandexService::search(const QString& query) {

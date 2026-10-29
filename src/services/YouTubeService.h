@@ -26,6 +26,10 @@ public:
     static QString queryTrackId(const QString& query);
     static QString queryFromTrackId(const QString& trackId);
 
+signals:
+    // yt-dlp не нашёл трек, упал или не установлен
+    void resolveFailed(const QString& trackId);
+
 private:
     void runYtDlp(const QStringList& args, const QString& type, const QString& id = QString());
     QVariantMap parseYoutubeTrack(const QJsonObject& obj);

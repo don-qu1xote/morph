@@ -99,40 +99,54 @@ void YouTubeService::runYtDlp(const QStringList& args, const QString& type, cons
         }
     });
 
-    process->start("yt-dlp", args);
-    timer->start(20000);
+    auto fail = [this, type, id]() {
+        if (type == "resolve") emit resolveFailed(id);
+    };
 
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [this, process, timer, type, id]() {
+    // без yt-dlp в системе finished не приходит вовсе, и процесс так и висел бы в памяти
+    connect(process, &QProcess::errorOccurred, this, [process, timer, fail](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
         timer->stop();
-        if (process->exitStatus() == QProcess::NormalExit && process->exitCode() == 0) {
-            QString output = process->readAllStandardOutput();
-            if (type == "search" || type == "charts" || type == "import") {
-                QVariantList results;
-                QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-                for (const QString& line : lines) {
-                    QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
-                    if (!doc.isNull()) {
-                        results.append(parseYoutubeTrack(doc.object()));
-                    }
-                }
-                if (type == "search") emit searchResultsReady("YouTube", results);
-                else if (type == "charts") emit chartsReady("YouTube", results);
-                else if (type == "import") emit playlistImported("Imported Playlist", "", results);
-            } else if (type == "resolve") {
-                QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
-                if (!doc.isNull()) {
-                    QJsonObject obj = doc.object();
-                    QString url = obj["url"].toString();
-                    int bitrate = qRound(obj["abr"].toDouble());
-                    
-                    emit streamUrlReady(id, url);
-                    if (bitrate > 0) emit bitrateReady(id, bitrate);
-                }
-            }
-        } else {
-        }
+        fail();
         process->deleteLater();
     });
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, timer, type, id, fail]() {
+                timer->stop();
+                if (process->exitStatus() == QProcess::NormalExit && process->exitCode() == 0) {
+                    QString output = process->readAllStandardOutput();
+                    if (type == "search" || type == "charts" || type == "import") {
+                        QVariantList results;
+                        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+                        for (const QString& line : lines) {
+                            QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
+                            if (!doc.isNull()) {
+                                results.append(parseYoutubeTrack(doc.object()));
+                            }
+                        }
+                        if (type == "search") emit searchResultsReady("YouTube", results);
+                        else if (type == "charts") emit chartsReady("YouTube", results);
+                        else if (type == "import") emit playlistImported("Imported Playlist", "", results);
+                    } else if (type == "resolve") {
+                        QJsonObject obj = QJsonDocument::fromJson(output.toUtf8()).object();
+                        QString url = obj["url"].toString();
+                        int bitrate = qRound(obj["abr"].toDouble());
+                        if (url.isEmpty()) {
+                            fail();
+                        } else {
+                            emit streamUrlReady(id, url);
+                            if (bitrate > 0) emit bitrateReady(id, bitrate);
+                        }
+                    }
+                } else {
+                    fail();
+                }
+                process->deleteLater();
+            });
+
+    process->start("yt-dlp", args);
+    timer->start(20000);
 }
 
 bool YouTubeService::isTrackCached(const QString& trackId) {

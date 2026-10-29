@@ -321,8 +321,38 @@ void SoundCloudService::fetchNextPlaylistChunk(const QString& playlistName, cons
 
 void SoundCloudService::resolveStreamUrl(const QString& trackId) {
     if (m_token.isEmpty()) return;
+    resolveAs(trackId, trackId);
+}
 
-    QUrl url(m_api + "/tracks/" + trackId);
+void SoundCloudService::resolveByQuery(const QString& query, const QString& trackId) {
+    if (m_token.isEmpty()) {
+        emit notFound(trackId, query);
+        return;
+    }
+
+    QUrl url(m_api + "/search/tracks");
+    QUrlQuery q;
+    q.addQueryItem("q", query);
+    q.addQueryItem("limit", "1");
+    if (!m_token.startsWith("2-")) q.addQueryItem("client_id", m_token);
+    url.setQuery(q);
+
+    net->get(
+        url, scAuthHeader(m_token),
+        [this, query, trackId](QNetworkReply* reply) {
+            QJsonArray found = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
+            if (reply->error() != QNetworkReply::NoError || found.isEmpty()) {
+                emit notFound(trackId, query);
+                return;
+            }
+            resolveAs(found[0].toObject()["id"].toVariant().toString(), trackId);
+        },
+        false);
+}
+
+// soundcloudId это что запрашиваем, trackId это под каким id отдаём поток
+void SoundCloudService::resolveAs(const QString& soundcloudId, const QString& trackId) {
+    QUrl url(m_api + "/tracks/" + soundcloudId);
     QUrlQuery q;
     if (!m_token.startsWith("2-")) {
         q.addQueryItem("client_id", m_token);
