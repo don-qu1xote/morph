@@ -59,6 +59,21 @@ ApplicationWindow {
         enabled: !searchField.activeFocus
         onActivated: playNext()
     }
+    Shortcut {
+        sequence: "S"
+        enabled: !searchField.activeFocus
+        onActivated: MorphQueue.shuffle = !MorphQueue.shuffle
+    }
+    Shortcut {
+        sequence: "Q"
+        enabled: !searchField.activeFocus
+        onActivated: toggleSidePanel("queue")
+    }
+    Shortcut {
+        sequence: "W"
+        enabled: !searchField.activeFocus
+        onActivated: toggleSidePanel("lyrics")
+    }
 
     FontLoader { id: mainFont; source: "qrc:/assets/fonts/interblack.otf" }
 
@@ -411,6 +426,15 @@ ApplicationWindow {
         }
     }
 
+    function toggleSidePanel(tab) {
+        if (sidePanel.opened && sidePanel.tab === tab) {
+            sidePanel.close()
+        } else {
+            sidePanel.tab = tab
+            sidePanel.open()
+        }
+    }
+
     function playingModel() {
         return currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
     }
@@ -437,6 +461,9 @@ ApplicationWindow {
             playTrack(model.get(currentTrackIndex + 1), currentTrackIndex + 1)
         } else if (currentPlaylist === "MY_VIBE") {
             MorphServices.getWave()
+        } else if (currentTrack && MorphSettings.getAutoplayEnabled()) {
+            // список кончился: дальше волна по последнему треку, как автоплей в Spotify
+            startTrackWave(currentTrack)
         }
     }
 
@@ -1723,6 +1750,45 @@ ApplicationWindow {
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
+                                                var newState = !MorphSettings.getAutoplayEnabled()
+                                                MorphSettings.setAutoplayEnabled(newState)
+                                                showToast("Autoplay " + (newState ? "enabled" : "disabled"))
+                                            }
+                                            background: Rectangle { color: "#f0f0f0"; radius: 10; border.color: "#cccccc" }
+                                            contentItem: RowLayout {
+                                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                                anchors.leftMargin: 15; anchors.rightMargin: 15; spacing: 10
+                                                Image {
+                                                    source: "qrc:/assets/play-circle.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter
+                                                    sourceSize.width: 40; sourceSize.height: 40
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: "#111111" }
+                                                }
+                                                Text { text: "Autoplay"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Medium; Layout.fillWidth: true; verticalAlignment: Text.AlignVCenter }
+                                                Switch {
+                                                    id: autoplaySwitch; Layout.alignment: Qt.AlignVCenter; Layout.preferredHeight: 20; padding: 0
+                                                    checked: (window.settingsVersion, MorphSettings.getAutoplayEnabled())
+                                                    onToggled: {
+                                                        MorphSettings.setAutoplayEnabled(checked)
+                                                        showToast("Autoplay " + (checked ? "enabled" : "disabled"))
+                                                    }
+                                                    indicator: Rectangle {
+                                                        implicitWidth: 36; implicitHeight: 20; radius: 10
+                                                        color: autoplaySwitch.checked ? "#b57339" : "#dddddd"
+                                                        Behavior on color { ColorAnimation { duration: 150 } }
+                                                        Rectangle {
+                                                            x: autoplaySwitch.checked ? parent.width - width - 2 : 2; y: 2
+                                                            width: 16; height: 16; radius: 8; color: "#111111"
+                                                            Behavior on x { NumberAnimation { duration: 150 } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                                        }
+
+                                        Button {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 50
+                                            onClicked: (mouse) => {
                                                 var newState = !MorphSettings.getDiscordRpcEnabled()
                                                 MorphSettings.setDiscordRpcEnabled(newState)
                                                 showToast("Discord RPC " + (newState ? "enabled" : "disabled"))
@@ -2762,34 +2828,14 @@ ApplicationWindow {
                                             Layout.preferredWidth: 20; Layout.preferredHeight: 20
                                             source: "qrc:/assets/microphone-variant.svg"; sourceSize: Qt.size(64, 64)
                                             layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened && sidePanel.tab === "lyrics" ? "#b57339" : "#111111" }
-                                            MouseArea {
-                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                                onClicked: (mouse) => {
-                                                    if (sidePanel.opened && sidePanel.tab === "lyrics") {
-                                                        sidePanel.close()
-                                                    } else {
-                                                        sidePanel.tab = "lyrics"
-                                                        sidePanel.open()
-                                                    }
-                                                }
-                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: (mouse) => toggleSidePanel("lyrics") }
                                         }
 
                                         Image {
                                             Layout.preferredWidth: 20; Layout.preferredHeight: 20
                                             source: "qrc:/assets/playlist-music.svg"; sourceSize: Qt.size(64, 64)
                                             layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened && sidePanel.tab === "queue" ? "#b57339" : "#111111" }
-                                            MouseArea {
-                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                                onClicked: (mouse) => {
-                                                    if (sidePanel.opened && sidePanel.tab === "queue") {
-                                                        sidePanel.close()
-                                                    } else {
-                                                        sidePanel.tab = "queue"
-                                                        sidePanel.open()
-                                                    }
-                                                }
-                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: (mouse) => toggleSidePanel("queue") }
                                         }
 
                                         // трек убран из Яндекса и играет с замены: откуда она и какая по счёту

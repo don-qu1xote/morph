@@ -282,6 +282,17 @@ bool SettingsManager::getMixedWaveEnabled() {
     return m_data["mixed_wave"].toBool();
 }
 
+void SettingsManager::setAutoplayEnabled(bool enabled) {
+    m_data["autoplay"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getAutoplayEnabled() {
+    if (!m_data.contains("autoplay")) return true;
+    return m_data["autoplay"].toBool();
+}
+
 void SettingsManager::setWaveSetting(const QString& key, const QString& seed) {
     QVariantMap wave = getWaveSettings();
     if (seed.isEmpty()) wave.remove(key);

@@ -36,6 +36,8 @@
   - Easily add tracks from search, charts, or history directly into your playlists.
 - **Queue & Shuffle**: Play next, add to queue and a side panel with what plays now, your queue and the rest of the list; shuffle plays every track once per round, and Previous walks back through what actually played.
 - **Synced Lyrics**: Lyrics from Yandex, or from LRCLIB for tracks Yandex no longer has; the current line follows the music and a click on a line jumps there.
+- **Autoplay**: When a playlist or album ends, a wave by its last track keeps the music going. Turn it off in Settings.
+- **Keyboard Shortcuts**: `Space`/`K` play or pause, `J`/`L` seek 5 s, `,`/`.` previous and next, `=`/`-` volume, `S` shuffle, `Q` queue, `W` lyrics.
 - **Search History**: Automatically keeps track of your 20 most recently played tracks from searches for quick access.
 - **Persistent Caching & Offline Support**: Automatically saves played tracks and viewed covers to local storage, enabling full playback without an internet connection.
 - **Advanced Cache Management**: Dedicated storage view with real-time size calculation and granular clearing options for tracks and covers.

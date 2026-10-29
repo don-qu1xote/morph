@@ -74,6 +74,9 @@ public slots:
     bool getDiscordRpcEnabled();
     void setMixedWaveEnabled(bool enabled);
     bool getMixedWaveEnabled();
+    // когда список кончился, играть волну по последнему треку
+    void setAutoplayEnabled(bool enabled);
+    bool getAutoplayEnabled();
     // настройки Моей волны: ключ (diversity, moodEnergy, language) и сид значения
     void setWaveSetting(const QString& key, const QString& seed);
     QVariantMap getWaveSettings();
