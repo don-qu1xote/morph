@@ -4,12 +4,17 @@ BUILD_DIR ?= build
 BUILD_TYPE ?= Debug
 JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu)
 UPSTREAM := $(shell cat .upstream)
+DOCKER_IMAGE ?= morph-dev
 
-# на маке Qt из brew сам не находится
+# на маке Qt и OpenSSL из brew сами не находятся
 QT_PREFIX ?= $(shell brew --prefix qt 2>/dev/null)
+OPENSSL_PREFIX ?= $(shell brew --prefix openssl@3 2>/dev/null)
 CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ifneq ($(QT_PREFIX),)
 CMAKE_FLAGS += -DCMAKE_PREFIX_PATH=$(QT_PREFIX)
+endif
+ifneq ($(OPENSSL_PREFIX),)
+CMAKE_FLAGS += -DOPENSSL_ROOT_DIR=$(OPENSSL_PREFIX)
 endif
 
 ifeq ($(shell uname),Darwin)
@@ -57,10 +62,24 @@ fmt-check: ## то же, что проверяет CI
 tidy: configure ## clang-tidy по изменённым файлам
 	scripts/tidy-changed.sh $(BUILD_DIR) $(UPSTREAM)
 
+.PHONY: ci
+ci: ## всё, что гоняет CI: формат, сборка, тесты, tidy
+	scripts/check-format.sh $(UPSTREAM)
+	$(MAKE) test BUILD_DIR=build-ci
+	scripts/tidy-changed.sh build-ci $(UPSTREAM)
+
+.PHONY: docker-image
+docker-image: ## собрать образ среды сборки
+	docker build -t $(DOCKER_IMAGE) -f docker/Dockerfile $(if $(DOCKER_BASE),--build-arg BASE_IMAGE=$(DOCKER_BASE)) .
+
+.PHONY: docker-ci
+docker-ci: ## make ci внутри образа, как в CI
+	docker run --rm -u $$(id -u):$$(id -g) -e HOME=/tmp -v "$(CURDIR)":/src $(DOCKER_IMAGE) make ci
+
 .PHONY: hooks
 hooks: ## включить git-хуки из .githooks
 	git config core.hooksPath .githooks
 
 .PHONY: clean
 clean: ## удалить сборки
-	rm -rf $(BUILD_DIR) build-release
+	rm -rf $(BUILD_DIR) build-release build-ci
