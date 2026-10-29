@@ -3281,7 +3281,7 @@ ApplicationWindow {
             
             TextField {
                 placeholderTextColor: systemTheme.accent
-                id: importUrlField; placeholderText: "YANDEX, SOUNDCLOUD OR YOUTUBE URL"; Layout.fillWidth: true
+                id: importUrlField; placeholderText: "YANDEX, SOUNDCLOUD, YOUTUBE URL OR PATH TO .TXT"; Layout.fillWidth: true
                 color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 12; padding: 10; enabled: !importPlaylistPopup.isBusy
                 background: Rectangle { color: systemTheme.background; radius: 6; border.color: systemTheme.border }
             }

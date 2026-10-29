@@ -1,4 +1,10 @@
 #include "ServiceManager.h"
+#include "../services/TrackData.h"
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSet>
+#include <QUrl>
 
 ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent)
     : QObject(parent), net(net), cache(cache) {
@@ -9,6 +15,11 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
+
+    // трек убрали из Яндекса: та же песня с ютуба, но под яндексовским id,
+    // так QML ничего не замечает, а кэш потом отдаёт её уже офлайн
+    connect(yandex, &YandexService::streamUnavailable, this,
+            [this](const QString& trackId, const QString& query) { youtube->resolveByQuery(query, trackId); });
 
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
@@ -105,6 +116,15 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
 }
 
 void ServiceManager::importPlaylist(const QString& url) {
+    // вместо ссылки можно вставить путь к txt со строками "артист - название"
+    QString path = url.trimmed();
+    if (path.startsWith("file://")) path = QUrl(path).toLocalFile();
+    if (path.startsWith("~/")) path = QDir::homePath() + path.mid(1);
+    if (QFileInfo(path).isFile()) {
+        importTextFile(path);
+        return;
+    }
+
     if (url.contains("yandex")) {
         yandex->importPlaylist(url);
     } else if (url.contains("soundcloud")) {
@@ -114,6 +134,41 @@ void ServiceManager::importPlaylist(const QString& url) {
     } else {
         emit errorOccurred("Unsupported URL. Use Yandex, SoundCloud or YouTube.");
     }
+}
+
+void ServiceManager::importTextFile(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        emit errorOccurred("Cannot open file: " + path);
+        return;
+    }
+
+    QVariantList tracks;
+    QSet<QString> seen;
+    while (!file.atEnd()) {
+        QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.isEmpty() || seen.contains(line)) continue;
+        seen.insert(line);
+
+        TrackData track;
+        track.title = line;
+        int sep = line.indexOf(" - ");
+        if (sep > 0) {
+            track.artist = line.left(sep);
+            track.title = line.mid(sep + 3);
+        }
+        // играется через поиск на ютубе, см. YouTubeService::resolveStreamUrl
+        track.id = YouTubeService::queryTrackId(line);
+        track.service = "YouTube";
+        track.webUrl = "https://www.youtube.com/results?search_query=" + QUrl::toPercentEncoding(line);
+        tracks.append(track.toVariantMap());
+    }
+
+    if (tracks.isEmpty()) {
+        emit errorOccurred("No \"Artist - Title\" lines found in file");
+        return;
+    }
+    emit playlistImported(QFileInfo(path).completeBaseName(), "", tracks);
 }
 
 void ServiceManager::setYandexToken(const QString& token) {

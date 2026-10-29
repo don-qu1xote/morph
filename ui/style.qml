@@ -3834,7 +3834,7 @@ function playTrack(track, index) {
             
             TextField {
                 placeholderTextColor: "#666"
-                id: importUrlField; placeholderText: "YANDEX, SOUNDCLOUD OR YOUTUBE URL"; Layout.fillWidth: true
+                id: importUrlField; placeholderText: "YANDEX, SOUNDCLOUD, YOUTUBE URL OR PATH TO .TXT"; Layout.fillWidth: true
                 color: "white"; font.family: mainFont.name; font.pixelSize: 12; padding: 10; enabled: !importPlaylistPopup.isBusy
                 background: Rectangle { color: "#111"; radius: 6; border.color: "#333" }
             }

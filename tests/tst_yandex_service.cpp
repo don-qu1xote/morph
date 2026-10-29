@@ -297,6 +297,78 @@ private slots:
         QCOMPARE(event["type"].toString(), QString("like"));
         QCOMPARE(event["trackId"].toString(), QString("2:20"));
     }
+    void refusedDownloadMeansUnavailable() {
+        api.on("GET", "/tracks/101/download-info", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        loadTracks(yandex, {track(101, 555, "Song")});
+        QSignalSpy unavailable(&yandex, &YandexService::streamUnavailable);
+        QSignalSpy errors(&yandex, &BaseService::errorOccurred);
+
+        yandex.resolveStreamUrl("101");
+        QVERIFY(unavailable.wait());
+        QCOMPARE(unavailable[0][0].toString(), QString("101"));
+        QCOMPARE(unavailable[0][1].toString(), QString("Artist - Song"));
+        QCOMPARE(errors.count(), 0);
+    }
+
+    void emptyDownloadInfoMeansUnavailable() {
+        api.on("GET", "/tracks/101/download-info", [](const HttpRequest&) { return jsonResult(QJsonArray{}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        loadTracks(yandex, {track(101, 555, "Song")});
+        QSignalSpy unavailable(&yandex, &YandexService::streamUnavailable);
+
+        yandex.resolveStreamUrl("101");
+        QVERIFY(unavailable.wait());
+    }
+
+    void trackMarkedUnavailableSkipsDownloadInfo() {
+        QJsonObject removed = track(101, 555, "Song");
+        removed["available"] = false;
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        loadTracks(yandex, {removed});
+        QSignalSpy unavailable(&yandex, &YandexService::streamUnavailable);
+
+        yandex.resolveStreamUrl("101");
+        QCOMPARE(unavailable.count(), 1);
+        QVERIFY(api.requestsTo("/tracks/101/download-info").isEmpty());
+    }
+
+    void unknownTrackIsLookedUpByIdFirst() {
+        api.on("GET", "/tracks/202/download-info", [](const HttpRequest&) { return HttpResponse{451, "{}"}; });
+        api.on("GET", "/tracks/202", [](const HttpRequest&) { return jsonResult(QJsonArray{track(202, 9, "Lost")}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy unavailable(&yandex, &YandexService::streamUnavailable);
+
+        yandex.resolveStreamUrl("202");
+        QVERIFY(unavailable.wait());
+        QCOMPARE(unavailable[0][1].toString(), QString("Artist - Lost"));
+    }
+
+    void noNetworkIsAnErrorNotAFallback() {
+        qputenv("MORPH_YANDEX_API", "http://127.0.0.1:1");
+        NetworkManager net;
+        YandexService yandex(&net);
+        qputenv("MORPH_YANDEX_API", api.url().toUtf8());
+        yandex.setToken("token");
+        QSignalSpy unavailable(&yandex, &YandexService::streamUnavailable);
+        QSignalSpy errors(&yandex, &BaseService::errorOccurred);
+
+        yandex.resolveStreamUrl("101");
+        QVERIFY(errors.wait());
+        QCOMPARE(unavailable.count(), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestYandexService)

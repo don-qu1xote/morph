@@ -4,6 +4,7 @@
 #include "BaseService.h"
 #include "../network/NetworkManager.h"
 #include <QHash>
+#include <QSet>
 #include <QStringList>
 #include <functional>
 #include <memory>
@@ -29,11 +30,14 @@ public:
 signals:
     // allIds это все лайкнутые id, даже те, по которым /tracks не отдал данных
     void likesFetched(const QVariantList& tracks, const QStringList& allIds);
+    // трек есть в базе, но не отдаётся (убран из каталога), query это "артист - название"
+    void streamUnavailable(const QString& trackId, const QString& query);
 
 private:
     void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
     QVariantList parseYandexTracks(const QJsonArray& tracksArray);
     QString fullTrackId(const QString& trackId) const;
+    void reportUnavailable(const QString& trackId);
     void withUid(std::function<void()> next);
     void fetchTracksChunk(const QStringList& fullIds, const QStringList& allIds, int from,
                           std::shared_ptr<QVariantList> result);
@@ -55,6 +59,8 @@ private:
     // id и длительность запоминаем, когда трек проходит через parseYandexTracks
     QHash<QString, QString> m_albumIds;
     QHash<QString, qint64> m_durations;
+    QHash<QString, QString> m_queries;
+    QSet<QString> m_unavailable;
 
     QString m_waveSession;
     QString m_waveBatch;

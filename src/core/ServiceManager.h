@@ -46,6 +46,7 @@ signals:
 
 private:
     void attach(BaseService* service);
+    void importTextFile(const QString& path);
     BaseService* service(const QString& name) const;
 
     QString m_yandexToken;

@@ -20,6 +20,12 @@ public:
     void importPlaylist(const QString& url) override;
     bool isTrackCached(const QString& trackId) override;
 
+    // найти по "артист - название" и отдать поток под чужим id, чтобы QML
+    // доиграл трек так, будто он пришёл из исходного сервиса
+    void resolveByQuery(const QString& query, const QString& trackId);
+    static QString queryTrackId(const QString& query);
+    static QString queryFromTrackId(const QString& trackId);
+
 private:
     void runYtDlp(const QStringList& args, const QString& type, const QString& id = QString());
     QVariantMap parseYoutubeTrack(const QJsonObject& obj);

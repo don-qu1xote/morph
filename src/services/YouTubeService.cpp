@@ -15,11 +15,46 @@ void YouTubeService::search(const QString& query) {
     runYtDlp(args, "search");
 }
 
+// m4a первым: AAC играет на любом бэкенде QtMultimedia, а webm/opus только с FFmpeg
+static const char* kAudioFormat = "bestaudio[ext=m4a]/bestaudio";
+static const QString kQueryPrefix = "ytq-";
+
+// id из самого запроса: его можно хранить в плейлисте и сразу знать, что искать.
+// base64url, потому что по id ещё и файл кэша называется
+QString YouTubeService::queryTrackId(const QString& query) {
+    auto options = QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals;
+    return kQueryPrefix + QString::fromLatin1(query.toUtf8().toBase64(options));
+}
+
+QString YouTubeService::queryFromTrackId(const QString& trackId) {
+    if (!trackId.startsWith(kQueryPrefix)) return {};
+    QByteArray encoded = trackId.mid(kQueryPrefix.size()).toLatin1();
+    return QString::fromUtf8(QByteArray::fromBase64(encoded, QByteArray::Base64UrlEncoding));
+}
+
 void YouTubeService::resolveStreamUrl(const QString& trackId) {
+    QString query = queryFromTrackId(trackId);
+    if (!query.isEmpty()) {
+        resolveByQuery(query, trackId);
+        return;
+    }
+
     QStringList args;
-    args << "-f" << "bestaudio" << "--quiet" << "--no-warnings" 
-         << "--user-agent" << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    args << "-f" << kAudioFormat << "--quiet" << "--no-warnings"
+         << "--user-agent"
+         << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 "
+            "Safari/537.36"
          << "--print-json" << QString("https://www.youtube.com/watch?v=%1").arg(trackId);
+    runYtDlp(args, "resolve", trackId);
+}
+
+void YouTubeService::resolveByQuery(const QString& query, const QString& trackId) {
+    QStringList args;
+    args << "-f" << kAudioFormat << "--quiet" << "--no-warnings" << "--no-playlist"
+         << "--user-agent"
+         << "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 "
+            "Safari/537.36"
+         << "--print-json" << QString("ytsearch1:%1").arg(query);
     runYtDlp(args, "resolve", trackId);
 }
 

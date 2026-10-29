@@ -82,6 +82,9 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
         }
         track.service = "Yandex";
         m_durations[track.id] = track.durationMs;
+        m_queries[track.id] = track.artist + " - " + track.title;
+        if (trackObj["available"].toBool(true)) m_unavailable.remove(track.id);
+        else m_unavailable.insert(track.id);
         tracksList.append(track.toVariantMap());
     }
     return tracksList;
@@ -430,35 +433,70 @@ void YandexService::importPlaylist(const QString& url) {
 void YandexService::resolveStreamUrl(const QString& trackId) {
     if (m_token.isEmpty()) return;
 
+    if (m_unavailable.contains(trackId)) {
+        reportUnavailable(trackId);
+        return;
+    }
+
     QUrl url(QString("%1/tracks/%2/download-info").arg(m_api, trackId));
-    net->get(url, yandexHeaders(m_token), [this, trackId](QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) return;
-
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        QJsonArray results = doc.object()["result"].toArray();
-        if (results.isEmpty()) return;
-
-        int targetBitrate = 320;
-        if (m_quality == "192" || m_quality == "low") targetBitrate = 192;
-        else targetBitrate = 320;
-
-        int bestIdx = 0;
-        int minDiff = 10000;
-
-        for (int i = 0; i < results.size(); ++i) {
-            int br = results[i].toObject()["bitrateInKbps"].toInt();
-            int diff = qAbs(br - targetBitrate);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestIdx = i;
+    net->get(
+        url, yandexHeaders(m_token),
+        [this, trackId](QNetworkReply* reply) {
+            if (reply->error() != QNetworkReply::NoError) {
+                // сервер ответил ошибкой: трек не отдают, ищем его в другом месте.
+                // если ответа не было вовсе, это сеть, и искать бесполезно
+                int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                if (status >= 400) reportUnavailable(trackId);
+                else emit errorOccurred(QString("Network Error: %1").arg(reply->errorString()));
+                return;
             }
-        }
 
-        int br = results[bestIdx].toObject()["bitrateInKbps"].toInt();
-        int targetBr = br > 0 ? br : targetBitrate;
-        QString downloadInfoUrl = results[bestIdx].toObject()["downloadInfoUrl"].toString();
-        fetchDownloadInfo(trackId, QUrl(downloadInfoUrl), targetBr);
-    });
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            QJsonArray results = doc.object()["result"].toArray();
+            if (results.isEmpty()) {
+                reportUnavailable(trackId);
+                return;
+            }
+
+            int targetBitrate = 320;
+            if (m_quality == "192" || m_quality == "low") targetBitrate = 192;
+            else targetBitrate = 320;
+
+            int bestIdx = 0;
+            int minDiff = 10000;
+
+            for (int i = 0; i < results.size(); ++i) {
+                int br = results[i].toObject()["bitrateInKbps"].toInt();
+                int diff = qAbs(br - targetBitrate);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    bestIdx = i;
+                }
+            }
+
+            int br = results[bestIdx].toObject()["bitrateInKbps"].toInt();
+            int targetBr = br > 0 ? br : targetBitrate;
+            QString downloadInfoUrl = results[bestIdx].toObject()["downloadInfoUrl"].toString();
+            fetchDownloadInfo(trackId, QUrl(downloadInfoUrl), targetBr);
+        },
+        false);
+}
+
+void YandexService::reportUnavailable(const QString& trackId) {
+    if (m_queries.contains(trackId)) {
+        emit streamUnavailable(trackId, m_queries[trackId]);
+        return;
+    }
+
+    // трек не из ответов этой сессии (например, восстановился после перезапуска), узнаём название
+    net->get(
+        QUrl(m_api + "/tracks/" + trackId), yandexHeaders(m_token),
+        [this, trackId](QNetworkReply* reply) {
+            if (reply->error() != QNetworkReply::NoError) return;
+            parseYandexTracks(QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray());
+            if (m_queries.contains(trackId)) emit streamUnavailable(trackId, m_queries[trackId]);
+        },
+        false);
 }
 
 #include <QCryptographicHash>
