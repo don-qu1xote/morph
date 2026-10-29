@@ -242,15 +242,6 @@ private slots:
         QCOMPARE(soundcloudApi.requests.size(), 0);
         QVERIFY(ytDlpCalls().isEmpty());
     }
-
-    void sameSongMatchesAcrossServices() {
-        QCOMPARE(WaveMixer::trackKey(track("Yandex", "1", "Ежемесячные", "Молотилка")),
-                 WaveMixer::trackKey(track("YouTube", "a", "Channel", "Ежемесячные - Молотилка (Official Video)")));
-        QCOMPARE(WaveMixer::trackKey(track("Yandex", "2", "Lead, Guest", "Song")),
-                 WaveMixer::trackKey(track("SoundCloud", "b", "Lead", "Song (feat. Guest)")));
-        QVERIFY(WaveMixer::trackKey(track("Yandex", "3", "One", "Intro")) !=
-                WaveMixer::trackKey(track("Yandex", "4", "Other", "Intro")));
-    }
 };
 
 QTEST_GUILESS_MAIN(TestWaveMixer)

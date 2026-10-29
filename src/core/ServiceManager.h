@@ -11,6 +11,7 @@
 #include "../services/YandexService.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
+#include "FallbackFinder.h"
 #include "WaveMixer.h"
 
 class ServiceManager : public QObject {
@@ -25,6 +26,8 @@ public slots:
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
+    void otherVersion(const QVariantMap& track);
+    QVariantMap fallbackSource(const QVariantMap& track) const;
     void reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId);
     void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
                       double lengthSeconds, bool completed);
@@ -49,16 +52,16 @@ signals:
     void bitrateReady(const QString& trackId, int bitrate);
     void trackStarted(const QString& serviceName, const QString& trackId, const QString& albumId);
     void likesFetched(const QString& serviceName, const QVariantList& tracks, const QStringList& allIds);
+    // трек играет с замены: service, id, artist, title, webUrl, index и total
+    void fallbackChosen(const QString& trackId, const QVariantMap& source);
 
 private:
     void attach(BaseService* service);
     void importTextFile(const QString& path);
-    void fallBackToSoundCloud(const QString& trackId);
+    static QVariantMap wantedFrom(const QVariantMap& track);
     BaseService* service(const QString& name) const;
 
     QString m_yandexToken;
-    // id трека, которого нет в Яндексе, и что по нему искать дальше по цепочке
-    QHash<QString, QString> m_fallbackQueries;
     // ищутся заранее и ещё не включены
     QSet<QString> m_prefetching;
     NetworkManager* net;
@@ -67,6 +70,7 @@ private:
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
     WaveMixer* mixer;
+    FallbackFinder* finder;
     // имена такие же, как поле service у трека: "Yandex", "SoundCloud", "YouTube"
     QList<QPair<QString, BaseService*>> m_services;
 };

@@ -340,31 +340,29 @@ void SoundCloudService::fetchNextPlaylistChunk(const QString& playlistName, cons
 
 void SoundCloudService::resolveStreamUrl(const QString& trackId) {
     if (m_token.isEmpty()) return;
-    resolveAs(trackId, trackId);
+    streamAs(trackId, trackId);
 }
 
-void SoundCloudService::resolveByQuery(const QString& query, const QString& trackId) {
+// Варианты замены для трека, которого нет в Яндексе: выбирает FallbackFinder
+void SoundCloudService::searchCandidates(const QString& query, const QString& trackId) {
     if (m_token.isEmpty()) {
-        emit notFound(trackId, query);
+        emit candidatesReady(trackId, {});
         return;
     }
 
     QUrl url(m_api + "/search/tracks");
     QUrlQuery q;
     q.addQueryItem("q", query);
-    q.addQueryItem("limit", "1");
+    q.addQueryItem("limit", "10");
     addClientId(q);
     url.setQuery(q);
 
     net->get(
         url, authHeaders(),
-        [this, query, trackId](QNetworkReply* reply) {
+        [this, trackId](QNetworkReply* reply) {
             QJsonArray found = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
-            if (reply->error() != QNetworkReply::NoError || found.isEmpty()) {
-                emit notFound(trackId, query);
-                return;
-            }
-            resolveAs(found[0].toObject()["id"].toVariant().toString(), trackId);
+            if (reply->error() != QNetworkReply::NoError) found = {};
+            emit candidatesReady(trackId, parseSoundCloudTracks(playableOnly(found)));
         },
         false);
 }
@@ -403,30 +401,36 @@ void SoundCloudService::relatedTo(const QString& query, int count) {
             net->get(
                 relatedUrl, authHeaders(),
                 [this](QNetworkReply* reply) {
-                    const QJsonArray collection =
-                        QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
-                    QJsonArray playable;
-                    for (const auto& t : collection) {
-                        // SNIP это 30 секунд превью для Go+, BLOCK не играет вовсе
-                        QString policy = t.toObject()["policy"].toString();
-                        if (policy != "SNIP" && policy != "BLOCK") playable.append(t);
-                    }
-                    emit relatedReady(parseSoundCloudTracks(playable));
+                    QJsonArray collection = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
+                    emit relatedReady(parseSoundCloudTracks(playableOnly(collection)));
                 },
                 false);
         },
         false);
 }
 
+// SNIP это 30 секунд превью для Go+, BLOCK не играет вовсе
+QJsonArray SoundCloudService::playableOnly(const QJsonArray& tracks) {
+    QJsonArray playable;
+    for (const auto& t : tracks) {
+        QString policy = t.toObject()["policy"].toString();
+        if (policy != "SNIP" && policy != "BLOCK") playable.append(t);
+    }
+    return playable;
+}
+
 // soundcloudId это что запрашиваем, trackId это под каким id отдаём поток
-void SoundCloudService::resolveAs(const QString& soundcloudId, const QString& trackId) {
+void SoundCloudService::streamAs(const QString& soundcloudId, const QString& trackId) {
     QUrl url(m_api + "/tracks/" + soundcloudId);
     QUrlQuery q;
     addClientId(q);
     url.setQuery(q);
 
     net->get(url, authHeaders(), [this, trackId](QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) return;
+        if (reply->error() != QNetworkReply::NoError) {
+            emit streamFailed(trackId);
+            return;
+        }
 
         QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         QJsonArray transcodings = doc.object()["media"].toObject()["transcodings"].toArray();
@@ -463,6 +467,8 @@ void SoundCloudService::resolveAs(const QString& soundcloudId, const QString& tr
 
         if (!transcodingUrl.isEmpty()) {
             fetchStreamUrl(trackId, transcodingUrl, detectedBitrate);
+        } else {
+            emit streamFailed(trackId);
         }
     });
 }
@@ -474,10 +480,11 @@ void SoundCloudService::fetchStreamUrl(const QString& trackId, const QString& tr
     url.setQuery(q);
 
     net->get(url, authHeaders(), [this, trackId, bitrate](QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) return;
-
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        QString streamUrl = doc.object()["url"].toString();
+        QString streamUrl = QJsonDocument::fromJson(reply->readAll()).object()["url"].toString();
+        if (reply->error() != QNetworkReply::NoError || streamUrl.isEmpty()) {
+            emit streamFailed(trackId);
+            return;
+        }
         emit bitrateReady(trackId, bitrate);
         emit streamUrlReady(trackId, streamUrl);
     });

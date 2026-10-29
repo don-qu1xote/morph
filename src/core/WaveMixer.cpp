@@ -1,8 +1,8 @@
 #include "WaveMixer.h"
+#include "TrackMatch.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
 #include <QRandomGenerator>
-#include <QRegularExpression>
 #include <algorithm>
 
 // на каждые два трека Яндекса один чужой
@@ -169,12 +169,12 @@ bool WaveMixer::isFresh(const QVariantMap& track) const {
     qint64 duration = track["durationMs"].toLongLong();
     // длительность неизвестна (0) у части ютубовских миксов, такие пропускаем дальше
     if (duration > 0 && (duration < kMinDurationMs || duration > kMaxDurationMs)) return false;
-    return !m_given.contains(track["id"].toString()) && !m_givenKeys.contains(trackKey(track));
+    return !m_given.contains(track["id"].toString()) && !m_givenKeys.contains(TrackMatch::key(track));
 }
 
 void WaveMixer::remember(const QVariantMap& track) {
     m_given.insert(track["id"].toString(), track);
-    m_givenKeys.insert(trackKey(track));
+    m_givenKeys.insert(TrackMatch::key(track));
 }
 
 // у ютубовских клипов артист обычно уже в названии
@@ -184,31 +184,4 @@ QString WaveMixer::seedQuery(const QVariantMap& track) {
     if (title.isEmpty()) return {};
     if (artist.isEmpty() || title.contains(" - ")) return title;
     return artist + " - " + title;
-}
-
-// Одна песня на разных площадках подписана по-разному: «Song» у «Artist, Guest»
-// в Яндексе и «Artist - Song (feat. Guest) [Official Video]» на YouTube.
-// Ключ из первого артиста и названия без скобок, только буквы и цифры
-QString WaveMixer::trackKey(const QVariantMap& track) {
-    static const QRegularExpression brackets("[\\(\\[][^\\)\\]]*[\\)\\]]");
-    static const QRegularExpression guests(",|&| feat\\.? | ft\\.? | x ", QRegularExpression::CaseInsensitiveOption);
-
-    QString artist = track["artist"].toString();
-    QString title = track["title"].toString();
-    int dash = title.indexOf(" - ");
-    if (dash > 0) {
-        artist = title.left(dash);
-        title = title.mid(dash + 3);
-    }
-    title.remove(brackets);
-    artist = artist.section(guests, 0, 0);
-
-    auto squash = [](const QString& s) {
-        QString out;
-        for (QChar c : s.toLower()) {
-            if (c.isLetterOrNumber()) out += c;
-        }
-        return out;
-    };
-    return squash(artist) + "|" + squash(title);
 }

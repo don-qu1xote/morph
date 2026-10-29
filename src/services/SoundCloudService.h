@@ -5,6 +5,7 @@
 #include "../network/NetworkManager.h"
 
 #include <QDateTime>
+#include <QJsonArray>
 #include <QMap>
 #include <QUrlQuery>
 
@@ -22,20 +23,23 @@ public:
     void reportPlay(const QString& trackId, const QString& albumId) override;
     void importPlaylist(const QString& url) override;
 
-    // найти по "артист - название" и отдать поток под чужим id
-    void resolveByQuery(const QString& query, const QString& trackId);
+    // варианты по "артист - название" для трека trackId, ответ в candidatesReady
+    void searchCandidates(const QString& query, const QString& trackId);
+    // поток трека soundcloudId, но под чужим id trackId
+    void streamAs(const QString& soundcloudId, const QString& trackId);
     // похожее на трек из запроса, ответ в relatedReady
     void relatedTo(const QString& query, int count);
     bool hasToken() const { return !m_token.isEmpty(); }
 
 signals:
-    void notFound(const QString& trackId, const QString& query);
+    void candidatesReady(const QString& trackId, const QVariantList& tracks);
+    void streamFailed(const QString& trackId);
     // пустой список, если ничего не нашлось или запрос упал
     void relatedReady(const QVariantList& tracks);
 
 private:
     void fetchStreamUrl(const QString& trackId, const QString& transcodingUrl, int bitrate);
-    void resolveAs(const QString& soundcloudId, const QString& trackId);
+    static QJsonArray playableOnly(const QJsonArray& tracks);
     void addClientId(QUrlQuery& query) const;
     QMap<QString, QByteArray> authHeaders() const;
     void fetchPlaylistTracksMetadata(const QString& playlistName, const QString& coverUrl, const QStringList& trackIds);

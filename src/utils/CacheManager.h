@@ -21,6 +21,8 @@ public:
     Q_INVOKABLE QString getTrackPath(const QString& trackId);
     Q_INVOKABLE QString getTrackUrl(const QString& trackId);
     Q_INVOKABLE void cacheTrack(const QString& trackId, const QString& url);
+    // выкинуть трек из кэша и остановить его скачивание: нужен другой файл под тем же id
+    Q_INVOKABLE void forgetTrack(const QString& trackId);
     Q_INVOKABLE void clearTrackCache();
 
     Q_INVOKABLE qint64 getTrackCacheSize();

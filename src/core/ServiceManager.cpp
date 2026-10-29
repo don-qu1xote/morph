@@ -1,5 +1,6 @@
 #include "ServiceManager.h"
 #include "../services/TrackData.h"
+#include "TrackMatch.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -18,20 +19,29 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
 
-    // трек убрали из Яндекса: та же песня с ютуба, но под яндексовским id,
-    // так QML ничего не замечает, а кэш потом отдаёт её уже офлайн
-    connect(yandex, &YandexService::streamUnavailable, this, [this](const QString& trackId, const QString& query) {
-        m_fallbackQueries[trackId] = query;
-        youtube->resolveByQuery(query, trackId, m_prefetching.contains(trackId));
-    });
-    connect(youtube, &YouTubeService::resolveFailed, this, &ServiceManager::fallBackToSoundCloud);
-    connect(soundcloud, &SoundCloudService::notFound, this, [this](const QString& trackId, const QString& query) {
-        m_fallbackQueries.remove(trackId);
+    // трек убрали из Яндекса: та же песня с SoundCloud или YouTube, но под
+    // яндексовским id, так QML ничего не замечает, а кэш потом отдаёт её офлайн
+    finder = new FallbackFinder(soundcloud, youtube, PathProvider::getDataPath() + "/fallback_choices.json", this);
+    connect(yandex, &YandexService::streamUnavailable, this,
+            [this](const QString& trackId, const QString& artist, const QString& title, qint64 durationMs) {
+                QVariantMap wanted{{"artist", artist}, {"title", title}, {"durationMs", durationMs}};
+                finder->find(trackId, wanted, m_prefetching.contains(trackId));
+            });
+    connect(youtube, &YouTubeService::resolveFailed, finder, &FallbackFinder::streamFailed);
+    connect(soundcloud, &SoundCloudService::streamFailed, finder, &FallbackFinder::streamFailed);
+    connect(finder, &FallbackFinder::chosen, this,
+            [this](const QString& trackId, const QVariantMap& candidate, int index, int total) {
+                QVariantMap source = candidate;
+                source["index"] = index + 1;
+                source["total"] = total;
+                emit fallbackChosen(trackId, source);
+            });
+    connect(finder, &FallbackFinder::notFound, this, [this](const QString& trackId, const QString& query) {
         // про трек, который ещё не включали, молчим: включат, тогда и скажем
-        if (!m_prefetching.remove(trackId)) emit errorOccurred("Not found on YouTube or SoundCloud: " + query);
+        if (!m_prefetching.remove(trackId)) emit errorOccurred("Not found on SoundCloud or YouTube: " + query);
     });
+    connect(finder, &FallbackFinder::noOtherVersion, this, [this]() { emit errorOccurred("No other versions found"); });
     connect(this, &ServiceManager::streamUrlReady, this, [this](const QString& trackId, const QString& url) {
-        m_fallbackQueries.remove(trackId);
         // поток с YouTube через VPN начинает играть заметно позже яндексовского,
         // поэтому следующий трек сразу ложится в кэш и потом стартует с диска
         if (m_prefetching.remove(trackId) && url.contains("googlevideo.com") && this->cache->savesTracks()) {
@@ -123,6 +133,13 @@ void ServiceManager::resolve(const QString& serviceName, const QString& trackId)
         emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
         return;
     }
+
+    // строки из импортированного .txt ищутся так же, как убранные из Яндекса
+    QString query = YouTubeService::queryFromTrackId(trackId);
+    if (s == youtube && !query.isEmpty()) {
+        finder->find(trackId, TrackMatch::fromQuery(query), false);
+        return;
+    }
     if (s) s->resolveStreamUrl(trackId);
 }
 
@@ -133,8 +150,37 @@ void ServiceManager::prefetch(const QString& serviceName, const QString& trackId
     if (!s || trackId.isEmpty() || cache->isTrackCached(trackId) || s->isTrackCached(trackId)) return;
 
     m_prefetching.insert(trackId);
-    if (s == youtube) youtube->prefetch(trackId);
+    QString query = YouTubeService::queryFromTrackId(trackId);
+    if (s == youtube && !query.isEmpty()) finder->find(trackId, TrackMatch::fromQuery(query), true);
+    else if (s == youtube) youtube->prefetch(trackId);
     else s->resolveStreamUrl(trackId);
+}
+
+// Играет не та версия: файл в кэше от прошлой выкидываем, иначе QML снова
+// включит его, и берём следующий вариант по очкам
+void ServiceManager::otherVersion(const QVariantMap& track) {
+    QString trackId = track["id"].toString();
+    if (trackId.isEmpty()) return;
+    cache->forgetTrack(trackId);
+    m_prefetching.remove(trackId);
+    finder->nextVersion(trackId, wantedFrom(track));
+}
+
+// Чем заменён трек, для значка в плеере. Выбор запоминается только для
+// треков, которые Яндекс не отдал, и для строк из .txt, поэтому у остальных
+// его просто нет. После перезапуска трек играет из кэша, и замена известна
+// только по запомненному выбору
+QVariantMap ServiceManager::fallbackSource(const QVariantMap& track) const {
+    QString trackId = track["id"].toString();
+    bool replaceable = track["service"].toString() == "Yandex" || !YouTubeService::queryFromTrackId(trackId).isEmpty();
+    if (!replaceable) return {};
+    return finder->currentChoice(trackId, wantedFrom(track));
+}
+
+QVariantMap ServiceManager::wantedFrom(const QVariantMap& track) {
+    QString query = YouTubeService::queryFromTrackId(track["id"].toString());
+    if (!query.isEmpty()) return TrackMatch::fromQuery(query);
+    return {{"artist", track["artist"]}, {"title", track["title"]}, {"durationMs", track["durationMs"]}};
 }
 
 void ServiceManager::reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId) {
@@ -179,14 +225,6 @@ void ServiceManager::importPlaylist(const QString& url) {
     }
 }
 
-// на ютубе не нашлось: пробуем SoundCloud. Касается только треков из цепочки
-// фолбэка и импортированных списков, обычный ютуб-трек сюда не уходит
-void ServiceManager::fallBackToSoundCloud(const QString& trackId) {
-    QString query = m_fallbackQueries.value(trackId, YouTubeService::queryFromTrackId(trackId));
-    if (query.isEmpty()) return;
-    soundcloud->resolveByQuery(query, trackId);
-}
-
 void ServiceManager::importTextFile(const QString& path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -201,13 +239,10 @@ void ServiceManager::importTextFile(const QString& path) {
         if (line.isEmpty() || seen.contains(line)) continue;
         seen.insert(line);
 
+        QVariantMap parsed = TrackMatch::fromQuery(line);
         TrackData track;
-        track.title = line;
-        int sep = line.indexOf(" - ");
-        if (sep > 0) {
-            track.artist = line.left(sep);
-            track.title = line.mid(sep + 3);
-        }
+        track.artist = parsed["artist"].toString();
+        track.title = parsed["title"].toString();
         // играется через поиск на ютубе, см. YouTubeService::resolveStreamUrl
         track.id = YouTubeService::queryTrackId(line);
         track.service = "YouTube";

@@ -22,6 +22,8 @@ static QString fastExtractorArgs() {
 
 // столько промахов быстрого пути подряд, и до перезапуска он больше не пробуется
 static const int kFastFailureLimit = 3;
+// сколько вариантов замены смотреть на YouTube
+static const int kCandidateCount = 5;
 
 // поиск, чарты, импорт и миксы: список треков без потоков, по JSON на строку
 static QStringList listArgs() {
@@ -51,7 +53,7 @@ void YouTubeService::resolveStreamUrl(const QString& trackId) {
         resolveByQuery(query, trackId);
         return;
     }
-    requestStream(trackId, QString("https://www.youtube.com/watch?v=%1").arg(trackId), false);
+    streamAs(trackId, trackId);
 }
 
 void YouTubeService::prefetch(const QString& trackId) {
@@ -60,18 +62,30 @@ void YouTubeService::prefetch(const QString& trackId) {
         resolveByQuery(query, trackId, true);
         return;
     }
-    requestStream(trackId, QString("https://www.youtube.com/watch?v=%1").arg(trackId), true);
+    streamAs(trackId, trackId, true);
 }
 
 void YouTubeService::resolveByQuery(const QString& query, const QString& trackId, bool prefetch) {
     requestStream(trackId, QString("ytsearch1:%1").arg(query), prefetch);
 }
 
+void YouTubeService::streamAs(const QString& videoId, const QString& trackId, bool prefetch) {
+    requestStream(trackId, QString("https://www.youtube.com/watch?v=%1").arg(videoId), prefetch);
+}
+
+// плоский поиск без потоков: один запрос и без deno
+void YouTubeService::findCandidates(const QString& query, const QString& trackId, bool prefetch) {
+    requestStream(trackId, QString("ytsearch%1:%2").arg(kCandidateCount).arg(query), prefetch, true);
+}
+
 // Один трек ищет один yt-dlp: раньше предзагрузка и клик по тому же треку
 // запускали два процесса. Включённый трек идёт без очереди, а предзагрузка
 // ждёт, пока ничего не ищется, чтобы не отнимать у него процессор и сеть
-void YouTubeService::requestStream(const QString& trackId, const QString& target, bool prefetch) {
-    auto it = m_streams.find(trackId);
+void YouTubeService::requestStream(const QString& trackId, const QString& target, bool prefetch, bool search) {
+    QString key = trackId + '\n' + target;
+    if (!search) m_latestTarget[trackId] = target;
+
+    auto it = m_streams.find(key);
     if (it != m_streams.end() && (prefetch || !it->prefetch)) return;
 
     // играет один трек: прошлые клики ещё ищутся, но уже на правах предзагрузки
@@ -82,18 +96,18 @@ void YouTubeService::requestStream(const QString& trackId, const QString& target
     if (it != m_streams.end()) {
         it->prefetch = false;
         if (!it->running) {
-            m_prefetchOrder.removeAll(trackId);
-            startStream(trackId);
+            m_prefetchOrder.removeAll(key);
+            startStream(key);
         }
         return;
     }
 
-    m_streams.insert(trackId, {target, prefetch, false});
+    m_streams.insert(key, {trackId, target, prefetch, false, search});
     if (!prefetch) {
-        startStream(trackId);
+        startStream(key);
         return;
     }
-    m_prefetchOrder.append(trackId);
+    m_prefetchOrder.append(key);
     startWaitingPrefetch();
 }
 
@@ -104,39 +118,53 @@ void YouTubeService::startWaitingPrefetch() {
     if (!m_prefetchOrder.isEmpty()) startStream(m_prefetchOrder.takeFirst());
 }
 
-void YouTubeService::startStream(const QString& trackId) {
-    m_streams[trackId].running = true;
-    runStream(trackId, !fastExtractorArgs().isEmpty() && m_fastFailures < kFastFailureLimit);
+void YouTubeService::startStream(const QString& key) {
+    StreamJob& job = m_streams[key];
+    job.running = true;
+    if (!job.search) {
+        runStream(key, !fastExtractorArgs().isEmpty() && m_fastFailures < kFastFailureLimit);
+        return;
+    }
+
+    runYtDlp(listArgs() << job.target, [this, key](bool ok, const QString& output) {
+        StreamJob done = m_streams.take(key);
+        emit candidatesReady(done.trackId, ok ? parseJsonLines(output) : QVariantList());
+        startWaitingPrefetch();
+    });
 }
 
-void YouTubeService::runStream(const QString& trackId, bool fast) {
+void YouTubeService::runStream(const QString& key, bool fast) {
     QStringList args;
     args << "-f" << kAudioFormat << "--quiet" << "--no-warnings" << "--no-playlist" << "--user-agent" << kUserAgent;
     if (fast) args << "--extractor-args" << fastExtractorArgs();
-    args << "--print-json" << m_streams.value(trackId).target;
+    args << "--print-json" << m_streams.value(key).target;
 
-    runYtDlp(args, [this, trackId, fast](bool ok, const QString& output) {
+    runYtDlp(args, [this, key, fast](bool ok, const QString& output) {
         QJsonObject obj = QJsonDocument::fromJson(output.toUtf8()).object();
         QString url = ok ? obj["url"].toString() : QString();
         // быстрый клиент отдаёт не всё (детский контент, проверка на бота):
         // тот же запрос ещё раз, но с клиентами по умолчанию
         if (url.isEmpty() && fast) {
             ++m_fastFailures;
-            runStream(trackId, false);
+            runStream(key, false);
             return;
         }
         if (fast) m_fastFailures = 0;
-        finishStream(trackId, url, qRound(obj["abr"].toDouble()));
+        finishStream(key, url, qRound(obj["abr"].toDouble()));
     });
 }
 
-void YouTubeService::finishStream(const QString& trackId, const QString& url, int bitrate) {
-    m_streams.remove(trackId);
-    if (url.isEmpty()) {
-        emit resolveFailed(trackId);
-    } else {
-        emit streamUrlReady(trackId, url);
-        if (bitrate > 0) emit bitrateReady(trackId, bitrate);
+void YouTubeService::finishStream(const QString& key, const QString& url, int bitrate) {
+    StreamJob job = m_streams.take(key);
+    // пока искался этот поток, для трека попросили другой: выбрали другую версию
+    if (m_latestTarget.value(job.trackId) == job.target) {
+        m_latestTarget.remove(job.trackId);
+        if (url.isEmpty()) {
+            emit resolveFailed(job.trackId);
+        } else {
+            emit streamUrlReady(job.trackId, url);
+            if (bitrate > 0) emit bitrateReady(job.trackId, bitrate);
+        }
     }
     startWaitingPrefetch();
 }

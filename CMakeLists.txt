@@ -61,6 +61,8 @@ add_library(morph_core STATIC
     src/core/ServiceManager.h src/core/ServiceManager.cpp
     src/core/ListenTracker.h src/core/ListenTracker.cpp
     src/core/WaveMixer.h src/core/WaveMixer.cpp
+    src/core/TrackMatch.h src/core/TrackMatch.cpp
+    src/core/FallbackFinder.h src/core/FallbackFinder.cpp
     src/settings/SettingsManager.h src/settings/SettingsManager.cpp
     src/settings/PlaylistManager.h src/settings/PlaylistManager.cpp
     src/settings/TokenManager.h src/settings/TokenManager.cpp

@@ -29,8 +29,6 @@ public:
     void addSeed(const QVariantMap& track);
     void trackFinished(const QString& trackId);
 
-    static QString trackKey(const QVariantMap& track);
-
 public slots:
     void addBatch(const QString& serviceName, const QVariantList& tracks);
 
@@ -68,7 +66,7 @@ private:
     QSet<QString> m_usedSeeds;
     QVariantList m_lastBatch;
 
-    // всё, что уже ушло в волну: по id и по ключу из trackKey
+    // всё, что уже ушло в волну: по id и по ключу TrackMatch::key
     QHash<QString, QVariantMap> m_given;
     QSet<QString> m_givenKeys;
 };

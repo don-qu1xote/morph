@@ -82,7 +82,7 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
         }
         track.service = "Yandex";
         m_durations[track.id] = track.durationMs;
-        m_queries[track.id] = track.artist + " - " + track.title;
+        m_names[track.id] = {track.artist, track.title};
         if (trackObj["available"].toBool(true)) m_unavailable.remove(track.id);
         else m_unavailable.insert(track.id);
         tracksList.append(track.toVariantMap());
@@ -509,8 +509,9 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
 }
 
 void YandexService::reportUnavailable(const QString& trackId) {
-    if (m_queries.contains(trackId)) {
-        emit streamUnavailable(trackId, m_queries[trackId]);
+    auto names = m_names.constFind(trackId);
+    if (names != m_names.constEnd()) {
+        emit streamUnavailable(trackId, names->artist, names->title, m_durations.value(trackId));
         return;
     }
 
@@ -520,7 +521,10 @@ void YandexService::reportUnavailable(const QString& trackId) {
         [this, trackId](QNetworkReply* reply) {
             if (reply->error() != QNetworkReply::NoError) return;
             parseYandexTracks(QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray());
-            if (m_queries.contains(trackId)) emit streamUnavailable(trackId, m_queries[trackId]);
+            auto names = m_names.constFind(trackId);
+            if (names != m_names.constEnd()) {
+                emit streamUnavailable(trackId, names->artist, names->title, m_durations.value(trackId));
+            }
         },
         false);
 }

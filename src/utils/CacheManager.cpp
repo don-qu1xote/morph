@@ -66,6 +66,22 @@ void CacheManager::cacheTrack(const QString& trackId, const QString& url) {
     performTrackDownload(trackId, QUrl(url));
 }
 
+void CacheManager::forgetTrack(const QString& trackId) {
+    QString safeId = trackId;
+    safeId.replace("/", "_").replace(":", "_").replace("?", "_").replace("*", "_");
+
+    // без disconnect обработчик finished положил бы в кэш недокачанный кусок
+    if (QNetworkReply* reply = m_activeTrackReplies.take(safeId)) {
+        reply->disconnect();
+        reply->abort();
+        reply->deleteLater();
+    }
+    QString path = getTrackPath(trackId);
+    QFile::remove(path + ".part");
+    QFile::remove(path);
+    m_cachedTracks.remove(safeId);
+}
+
 void CacheManager::performTrackDownload(const QString& trackId, const QUrl& url, int redirectionDepth) {
     if (redirectionDepth > 5) return;
 

@@ -323,7 +323,9 @@ private slots:
         yandex.resolveStreamUrl("101");
         QVERIFY(unavailable.wait());
         QCOMPARE(unavailable[0][0].toString(), QString("101"));
-        QCOMPARE(unavailable[0][1].toString(), QString("Artist - Song"));
+        QCOMPARE(unavailable[0][1].toString(), QString("Artist"));
+        QCOMPARE(unavailable[0][2].toString(), QString("Song"));
+        QCOMPARE(unavailable[0][3].toLongLong(), 200000);
         QCOMPARE(errors.count(), 0);
     }
 
@@ -366,7 +368,7 @@ private slots:
 
         yandex.resolveStreamUrl("202");
         QVERIFY(unavailable.wait());
-        QCOMPARE(unavailable[0][1].toString(), QString("Artist - Lost"));
+        QCOMPARE(unavailable[0][2].toString(), QString("Lost"));
     }
 
     void noNetworkIsAnErrorNotAFallback() {

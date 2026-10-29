@@ -33,8 +33,8 @@ public:
 signals:
     // allIds это все лайкнутые id, даже те, по которым /tracks не отдал данных
     void likesFetched(const QVariantList& tracks, const QStringList& allIds);
-    // трек есть в базе, но не отдаётся (убран из каталога), query это "артист - название"
-    void streamUnavailable(const QString& trackId, const QString& query);
+    // трек есть в базе, но не отдаётся (убран из каталога); длительность 0, если неизвестна
+    void streamUnavailable(const QString& trackId, const QString& artist, const QString& title, qint64 durationMs);
 
 private:
     void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
@@ -62,7 +62,11 @@ private:
     // id и длительность запоминаем, когда трек проходит через parseYandexTracks
     QHash<QString, QString> m_albumIds;
     QHash<QString, qint64> m_durations;
-    QHash<QString, QString> m_queries;
+    struct Names {
+        QString artist;
+        QString title;
+    };
+    QHash<QString, Names> m_names;
     QSet<QString> m_unavailable;
 
     QString m_waveSession;
