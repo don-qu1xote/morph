@@ -24,9 +24,14 @@ public:
 
     // найти по "артист - название" и отдать поток под чужим id
     void resolveByQuery(const QString& query, const QString& trackId);
+    // похожее на трек из запроса, ответ в relatedReady
+    void relatedTo(const QString& query, int count);
+    bool hasToken() const { return !m_token.isEmpty(); }
 
 signals:
     void notFound(const QString& trackId, const QString& query);
+    // пустой список, если ничего не нашлось или запрос упал
+    void relatedReady(const QVariantList& tracks);
 
 private:
     void fetchStreamUrl(const QString& trackId, const QString& transcodingUrl, int bitrate);

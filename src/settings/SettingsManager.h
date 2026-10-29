@@ -72,6 +72,8 @@ public slots:
 
     void setDiscordRpcEnabled(bool enabled);
     bool getDiscordRpcEnabled();
+    void setMixedWaveEnabled(bool enabled);
+    bool getMixedWaveEnabled();
 
     Q_INVOKABLE QVariantMap getAboutInfo();
 

@@ -12,6 +12,8 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     yandex = new YandexService(net, this);
     soundcloud = new SoundCloudService(net, this);
     youtube = new YouTubeService(this);
+    mixer = new WaveMixer(soundcloud, youtube, this);
+    connect(mixer, &WaveMixer::waveReady, this, &ServiceManager::waveReady);
 
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
@@ -32,6 +34,12 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
+
+        QVariantList lost;
+        for (const QVariant& t : tracks) {
+            if (!yandex->isAvailable(t.toMap()["id"].toString())) lost.append(t);
+        }
+        mixer->setLostTracks(lost);
     });
 }
 
@@ -54,8 +62,9 @@ void ServiceManager::attach(BaseService* s) {
     connect(s, &BaseService::chartsReady, this, [this, withDuration](const QString& name, const QVariantList& r) {
         emit chartsReady(name, withDuration(r));
     });
+    // партии волны уходят в QML через миксер, он подмешивает SoundCloud и YouTube
     connect(s, &BaseService::waveReady, this, [this, withDuration](const QString& name, const QVariantList& r) {
-        emit waveReady(name, withDuration(r));
+        mixer->addBatch(name, withDuration(r));
     });
     connect(s, &BaseService::dailyMixesReady, this, [this](const QString& name, const QVariantList& playlists) {
         for (const QVariant& pl : playlists) {
@@ -117,10 +126,12 @@ void ServiceManager::reportPlay(const QString& serviceName, const QString& track
 void ServiceManager::reportListen(const QString& serviceName, const QString& trackId, const QString& albumId,
                                   double playedSeconds, double lengthSeconds, bool completed) {
     Q_UNUSED(albumId);
+    if (completed) mixer->trackFinished(trackId);
     if (serviceName == "Yandex") yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
 }
 
 void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
+    if (liked) mixer->addSeed(track);
     if (track["service"].toString() == "Yandex") yandex->setLiked(track["id"].toString(), liked);
 }
 
@@ -203,6 +214,10 @@ void ServiceManager::setYandexToken(const QString& token) {
 
 void ServiceManager::setSoundCloudClientId(const QString& clientId) {
     soundcloud->setToken(clientId);
+}
+
+void ServiceManager::setMixedWave(bool enabled) {
+    mixer->setEnabled(enabled);
 }
 
 void ServiceManager::setAudioQuality(const QString& quality) {

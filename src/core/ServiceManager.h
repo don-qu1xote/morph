@@ -10,6 +10,7 @@
 #include "../services/YandexService.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
+#include "WaveMixer.h"
 
 class ServiceManager : public QObject {
     Q_OBJECT
@@ -30,6 +31,7 @@ public slots:
     void importPlaylist(const QString& url);
     void setYandexToken(const QString& token);
     void setSoundCloudClientId(const QString& clientId);
+    void setMixedWave(bool enabled);
     void setAudioQuality(const QString& quality);
     void setYandexQuality(const QString& quality);
     void setSoundCloudQuality(const QString& quality);
@@ -60,6 +62,7 @@ private:
     YandexService* yandex;
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
+    WaveMixer* mixer;
     // имена такие же, как поле service у трека: "Yandex", "SoundCloud", "YouTube"
     QList<QPair<QString, BaseService*>> m_services;
 };

@@ -13,6 +13,7 @@ flowchart LR
     SM --> YS[YandexService]
     SM --> SC[SoundCloudService]
     SM --> YT[YouTubeService]
+    SM --> WM[WaveMixer]
     YS & SC --> NM[NetworkManager]
     YT -->|QProcess| YTDLP[yt-dlp]
 
@@ -55,6 +56,24 @@ sequenceDiagram
     Q->>Y: getWave() ближе к концу партии
     Y->>A: POST /rotor/session/{id}/tracks с queue
 ```
+
+**Смешанная волна.** Партии из сессии проходят через `WaveMixer`: треки Яндекса
+идут как есть, а между ними похожее с SoundCloud и YouTube и лайки, которые
+Яндекс убрал из каталога ([ADR-0007](adr/0007-mixed-wave.md)).
+
+```mermaid
+flowchart LR
+    Y["партия Яндекса"] --> M[WaveMixer]
+    M -->|"Y Y SC Y Y YT ..."| Q[QML]
+    M -.->|сид| S["SoundCloud: related"]
+    M -.->|сид| T["yt-dlp: микс клипа"]
+    S -.->|в пул| M
+    T -.->|в пул| M
+    L["лайки с available: false"] --> M
+```
+
+Сидом служит дослушанный или лайкнутый трек, по очереди с убранными лайками.
+Поиск идёт в фоне, поэтому первая партия приходит без задержки.
 
 **Лайки** синхронизируются в обе стороны, источник правды на стороне сервиса
 ([ADR-0004](adr/0004-likes-source-of-truth.md)). Дизлайк уходит и в коллекцию,

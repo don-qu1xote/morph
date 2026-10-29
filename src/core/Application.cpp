@@ -60,6 +60,9 @@ Application::Application(QObject *parent) : QObject(parent) {
     });
     services->setYandexQuality(settings->getYandexQuality());
     services->setSoundCloudQuality(settings->getSoundCloudQuality());
+    services->setMixedWave(settings->getMixedWaveEnabled());
+    connect(settings, &SettingsManager::settingsChanged, services,
+            [this]() { services->setMixedWave(settings->getMixedWaveEnabled()); });
 
     connect(audio, &AudioEngine::stateChanged, listens, [this]() { listens->playbackChanged(audio->isPlaying()); });
     connect(audio, &AudioEngine::durationChanged, listens, [this]() { listens->durationChanged(audio->duration()); });

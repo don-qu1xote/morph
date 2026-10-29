@@ -271,6 +271,17 @@ bool SettingsManager::getDiscordRpcEnabled() {
     return m_data["discord_rpc"].toBool();
 }
 
+void SettingsManager::setMixedWaveEnabled(bool enabled) {
+    m_data["mixed_wave"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getMixedWaveEnabled() {
+    if (!m_data.contains("mixed_wave")) return true;
+    return m_data["mixed_wave"].toBool();
+}
+
 QVariantMap SettingsManager::getAboutInfo() {
     QVariantMap info;
 #ifdef MORPH_VERSION

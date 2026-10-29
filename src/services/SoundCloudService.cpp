@@ -369,6 +369,55 @@ void SoundCloudService::resolveByQuery(const QString& query, const QString& trac
         false);
 }
 
+// Для смешанной волны: находим трек по запросу и берём его related, как блок
+// «Related tracks» на сайте
+void SoundCloudService::relatedTo(const QString& query, int count) {
+    if (m_token.isEmpty()) {
+        emit relatedReady({});
+        return;
+    }
+
+    QUrl url(m_api + "/search/tracks");
+    QUrlQuery q;
+    q.addQueryItem("q", query);
+    q.addQueryItem("limit", "1");
+    addClientId(q);
+    url.setQuery(q);
+
+    net->get(
+        url, authHeaders(),
+        [this, count](QNetworkReply* reply) {
+            QJsonArray found = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
+            if (reply->error() != QNetworkReply::NoError || found.isEmpty()) {
+                emit relatedReady({});
+                return;
+            }
+
+            QString id = found[0].toObject()["id"].toVariant().toString();
+            QUrl relatedUrl(QString("%1/tracks/%2/related").arg(m_api, id));
+            QUrlQuery rq;
+            rq.addQueryItem("limit", QString::number(count));
+            addClientId(rq);
+            relatedUrl.setQuery(rq);
+
+            net->get(
+                relatedUrl, authHeaders(),
+                [this](QNetworkReply* reply) {
+                    const QJsonArray collection =
+                        QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
+                    QJsonArray playable;
+                    for (const auto& t : collection) {
+                        // SNIP это 30 секунд превью для Go+, BLOCK не играет вовсе
+                        QString policy = t.toObject()["policy"].toString();
+                        if (policy != "SNIP" && policy != "BLOCK") playable.append(t);
+                    }
+                    emit relatedReady(parseSoundCloudTracks(playable));
+                },
+                false);
+        },
+        false);
+}
+
 // soundcloudId это что запрашиваем, trackId это под каким id отдаём поток
 void SoundCloudService::resolveAs(const QString& soundcloudId, const QString& trackId) {
     QUrl url(m_api + "/tracks/" + soundcloudId);

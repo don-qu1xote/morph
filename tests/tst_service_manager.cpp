@@ -148,6 +148,52 @@ private slots:
         QVERIFY(yandexApi.waitFor("/users/5/dislikes/tracks/add-multiple"));
         QCOMPARE(yandexApi.requestsTo("/users/5/dislikes/tracks/add-multiple").size(), 1);
     }
+
+    // лайк 2 убран из каталога: волна Яндекса его не вернёт, а смешанная вернёт
+    void removedLikeComesBackInTheWave() {
+        auto track = [](int id, bool available = true) {
+            return QJsonObject{{"id", id},
+                               {"title", "Song " + QString::number(id)},
+                               {"available", available},
+                               {"artists", QJsonArray{QJsonObject{{"name", "Artist"}}}}};
+        };
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+        yandexApi.on("GET", "/users/5/likes/tracks", [](const HttpRequest&) {
+            QJsonArray liked{QJsonObject{{"id", "1"}, {"timestamp", "2026-02"}},
+                             QJsonObject{{"id", "2"}, {"timestamp", "2026-01"}}};
+            return jsonResult(QJsonObject{{"library", QJsonObject{{"tracks", liked}}}});
+        });
+        yandexApi.on("POST", "/tracks",
+                     [track](const HttpRequest&) { return jsonResult(QJsonArray{track(1), track(2, false)}); });
+        yandexApi.on("POST", "/rotor/session/new", [track](const HttpRequest&) {
+            QJsonArray sequence;
+            for (int id = 101; id <= 110; ++id) sequence.append(QJsonObject{{"track", track(id)}});
+            return jsonResult(QJsonObject{{"radioSessionId", "s1"}, {"batchId", "b1"}, {"sequence", sequence}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QSignalSpy likes(&services, &ServiceManager::likesFetched);
+        QSignalSpy wave(&services, &ServiceManager::waveReady);
+        services.setYandexToken("d");
+        QVERIFY(likes.wait());
+
+        services.getWave();
+        QDeadlineTimer deadline(5000);
+        while (!deadline.hasExpired() && (wave.isEmpty() || wave.last()[0].toString() != "Yandex")) wave.wait(100);
+        QCOMPARE(wave.last()[0].toString(), QString("Yandex"));
+
+        QStringList ids;
+        for (const QVariant& t : wave.last()[1].toList()) ids.append(t.toMap()["id"].toString());
+        QCOMPARE(ids.size(), 11);
+        QCOMPARE(ids.last(), QString("2"));
+        QVERIFY(!ids.contains("1"));
+
+        // миксер тем временем ищет похожее через yt-dlp, процессу надо дать закончиться
+        QTest::qWait(300);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestServiceManager)
