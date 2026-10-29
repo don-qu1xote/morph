@@ -32,6 +32,7 @@ public slots:
     void toggleLike(const QVariantMap& track);
     bool isLiked(const QString& trackId);
     QVariantList getLikedTracks();
+    void mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds);
 
     void createPlaylist(const QString& name, const QString& coverUrl = "");
     void createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks);
@@ -96,6 +97,7 @@ public slots:
 
 signals:
     void likesChanged();
+    void likeToggled(const QVariantMap& track, bool liked);
     void playlistsChanged();
     void settingsChanged();
 

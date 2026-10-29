@@ -62,6 +62,36 @@ private slots:
         QCOMPARE(playlists["new"].toMap()["coverUrl"].toString(), QString("cover"));
         QCOMPARE(playlists["new"].toMap()["tracks"].toList().size(), 1);
     }
+    void mergeTakesServiceAsSourceOfTruth() {
+        QJsonObject data;
+        QJsonArray likes;
+        likes.append(QJsonObject::fromVariantMap(track("1")));
+        likes.append(QJsonObject::fromVariantMap(track("2")));
+        likes.append(QJsonObject::fromVariantMap(track("yt", "YouTube")));
+        likes.append(QJsonObject{{"id", "old"}, {"title", "liked before services were stored"}});
+        data["likes"] = likes;
+        PlaylistManager pm(&data);
+
+        // с телефона лайкнули 3, сняли 2
+        pm.mergeServiceLikes("Yandex", {track("3"), track("1")}, {"3", "1"});
+
+        QCOMPARE(likedIds(pm), QStringList({"3", "1", "yt", "old"}));
+        QVERIFY(pm.isLiked("3"));
+        QVERIFY(!pm.isLiked("2"));
+    }
+
+    void mergeKeepsLikesServiceNoLongerDescribes() {
+        QJsonObject data;
+        QJsonArray likes;
+        likes.append(QJsonObject::fromVariantMap(track("removed")));
+        data["likes"] = likes;
+        PlaylistManager pm(&data);
+
+        // id в лайках есть, а данных по нему сервис уже не отдаёт
+        pm.mergeServiceLikes("Yandex", {track("1")}, {"1", "removed"});
+
+        QCOMPARE(likedIds(pm), QStringList({"1", "removed"}));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestPlaylistManager)

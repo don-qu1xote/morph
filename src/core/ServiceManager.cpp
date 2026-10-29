@@ -9,6 +9,10 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
+
+    connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
+        emit likesFetched("Yandex", tracks, allIds);
+    });
 }
 
 // Раньше тут было по три одинаковых connect на каждый сигнал, по одному на сервис.
@@ -96,6 +100,10 @@ void ServiceManager::reportListen(const QString& serviceName, const QString& tra
     if (serviceName == "Yandex") yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
 }
 
+void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
+    if (track["service"].toString() == "Yandex") yandex->setLiked(track["id"].toString(), liked);
+}
+
 void ServiceManager::importPlaylist(const QString& url) {
     if (url.contains("yandex")) {
         yandex->importPlaylist(url);
@@ -109,7 +117,12 @@ void ServiceManager::importPlaylist(const QString& url) {
 }
 
 void ServiceManager::setYandexToken(const QString& token) {
+    bool changed = token != m_yandexToken;
+    m_yandexToken = token;
     yandex->setToken(token);
+
+    // QML зовёт это на каждом старте и перезагрузке стиля, лайки тянем только при новом токене
+    if (changed && !token.isEmpty()) yandex->fetchLikes();
 }
 
 void ServiceManager::setSoundCloudClientId(const QString& clientId) {

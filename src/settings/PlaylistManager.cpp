@@ -42,6 +42,37 @@ QVariantList PlaylistManager::getLikedTracks() {
     return (*m_data)["likes"].toArray().toVariantList();
 }
 
+// Для лайков сервиса правда на стороне сервиса: лайкнул с телефона, тут появилось,
+// снял, исчезло. Лайки других сервисов (ютуб, саундклауд) не трогаем.
+// Кого нет в tracks, но есть в allIds, оставляем: это как раз треки, убранные из
+// каталога, по которым сервис уже не отдаёт данных
+void PlaylistManager::mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds) {
+    QSet<QString> remote(allIds.begin(), allIds.end());
+    for (const QVariant& t : tracks) remote.insert(t.toMap()["id"].toString());
+
+    QJsonArray kept;
+    QSet<QString> local;
+    for (const auto& v : (*m_data)["likes"].toArray()) {
+        QJsonObject obj = v.toObject();
+        QString id = obj["id"].toString();
+        if (obj["service"].toString() == service && !remote.contains(id)) continue;
+        kept.append(obj);
+        local.insert(id);
+    }
+
+    // новых лайков с сервера обычно немного и они самые свежие, поэтому наверх
+    QJsonArray merged;
+    for (const QVariant& t : tracks) {
+        QVariantMap track = t.toMap();
+        if (!local.contains(track["id"].toString())) merged.append(QJsonObject::fromVariantMap(track));
+    }
+    for (const auto& v : kept) merged.append(v);
+
+    (*m_data)["likes"] = merged;
+    updateLikedSet();
+    emit likesChanged();
+}
+
 void PlaylistManager::createPlaylist(const QString& name, const QString& coverUrl) {
     QJsonObject playlists = (*m_data)["playlists"].toObject();
     if (!playlists.contains(name)) {

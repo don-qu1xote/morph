@@ -96,6 +96,43 @@ private slots:
         QTest::qWait(100);
         QCOMPARE(streams.count(), 0);
     }
+    void likesAreFetchedOncePerToken() {
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+        yandexApi.on("GET", "/users/5/likes/tracks", [](const HttpRequest&) {
+            return jsonResult(QJsonObject{{"library", QJsonObject{{"tracks", QJsonArray{}}}}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QSignalSpy fetched(&services, &ServiceManager::likesFetched);
+
+        services.setYandexToken("a");
+        QVERIFY(fetched.wait());
+        services.setYandexToken("a");
+        QTest::qWait(150);
+        QCOMPARE(fetched.count(), 1);
+        QCOMPARE(fetched[0][0].toString(), QString("Yandex"));
+    }
+
+    void likeIsSentOnlyForYandexTracks() {
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("b");
+        yandexApi.requests.clear();
+
+        services.setLiked({{"id", "yt1"}, {"service", "YouTube"}}, true);
+        services.setLiked({{"id", "9"}, {"service", "Yandex"}}, true);
+        QVERIFY(yandexApi.waitFor("/users/5/likes/tracks/add-multiple"));
+        QCOMPARE(yandexApi.requestsTo("/users/5/likes/tracks/add-multiple").size(), 1);
+        QCOMPARE(yandexApi.requestsTo("/users/5/likes/tracks/add-multiple")[0].form().queryItemValue("track-ids"),
+                 QString("9"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestServiceManager)

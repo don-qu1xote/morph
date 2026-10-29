@@ -24,6 +24,7 @@ public slots:
     void reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId);
     void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
                       double lengthSeconds, bool completed);
+    void setLiked(const QVariantMap& track, bool liked);
     void importPlaylist(const QString& url);
     void setYandexToken(const QString& token);
     void setSoundCloudClientId(const QString& clientId);
@@ -41,11 +42,13 @@ signals:
     void errorOccurred(const QString& message);
     void bitrateReady(const QString& trackId, int bitrate);
     void trackStarted(const QString& serviceName, const QString& trackId, const QString& albumId);
+    void likesFetched(const QString& serviceName, const QVariantList& tracks, const QStringList& allIds);
 
 private:
     void attach(BaseService* service);
     BaseService* service(const QString& name) const;
 
+    QString m_yandexToken;
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;

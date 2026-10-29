@@ -8,6 +8,7 @@
 #include <QVariantList>
 
 #include <QSet>
+#include <QStringList>
 
 class PlaylistManager : public QObject {
     Q_OBJECT
@@ -17,6 +18,7 @@ public:
     void toggleLike(const QVariantMap& track);
     bool isLiked(const QString& trackId);
     QVariantList getLikedTracks();
+    void mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds);
 
     void createPlaylist(const QString& name, const QString& coverUrl = "");
     void createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks);

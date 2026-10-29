@@ -216,6 +216,87 @@ private slots:
         QTest::qWait(150);
         for (const HttpRequest& r : api.requests) QVERIFY(!r.path.endsWith("/feedback"));
     }
+    // лайки выдаются вперемешку по времени, а 300 штук не влезают в одну пачку /tracks
+    void fetchLikesSortsNewestFirstInChunks() {
+        api.on("GET", "/account/status",
+               [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 77}}}}); });
+        api.on("GET", "/users/77/likes/tracks", [](const HttpRequest&) {
+            QJsonArray shortTracks;
+            for (int i = 1; i <= 300; ++i) {
+                shortTracks.append(QJsonObject{{"id", QString::number(i)},
+                                               {"albumId", QString::number(i * 10)},
+                                               {"timestamp", QString("2026-%1").arg(i, 4, 10, QChar('0'))}});
+            }
+            return jsonResult(QJsonObject{{"library", QJsonObject{{"uid", 77}, {"tracks", shortTracks}}}});
+        });
+        api.on("POST", "/tracks", [](const HttpRequest& r) {
+            QJsonArray tracks;
+            for (const QString& fullId : r.form().queryItemValue("track-ids").split(',')) {
+                int id = fullId.section(':', 0, 0).toInt();
+                if (id == 150) continue; // убран из каталога
+                tracks.prepend(track(id, id * 10, "t" + QString::number(id)));
+            }
+            return jsonResult(tracks);
+        });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy fetched(&yandex, &YandexService::likesFetched);
+
+        yandex.fetchLikes();
+        QVERIFY(fetched.wait());
+
+        QCOMPARE(api.requestsTo("/tracks").size(), 2);
+        QVERIFY(api.requestsTo("/tracks").first().form().queryItemValue("track-ids").startsWith("300:3000,299:2990"));
+
+        QVariantList tracks = fetched[0][0].toList();
+        QStringList allIds = fetched[0][1].toStringList();
+        QCOMPARE(tracks.size(), 299);
+        QCOMPARE(allIds.size(), 300);
+        QCOMPARE(tracks.first().toMap()["id"].toString(), QString("300"));
+        QCOMPARE(tracks.last().toMap()["id"].toString(), QString("1"));
+        QVERIFY(allIds.contains("150"));
+    }
+
+    void likeAndUnlikeUseAlbumAwareIds() {
+        api.on("GET", "/account/status",
+               [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 77}}}}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        loadTracks(yandex, {track(101, 555, "Song")});
+
+        yandex.setLiked("101", true);
+        yandex.setLiked("101", false);
+        QVERIFY(api.waitFor("/users/77/likes/tracks/add-multiple"));
+        QVERIFY(api.waitFor("/users/77/likes/tracks/remove"));
+
+        QCOMPARE(api.requestsTo("/users/77/likes/tracks/add-multiple").last().form().queryItemValue("track-ids"),
+                 QString("101:555"));
+        // uid спрашивается один раз
+        QCOMPARE(api.requestsTo("/account/status").size(), 1);
+    }
+
+    void likeInsideWaveIsAlsoWaveFeedback() {
+        serveWave();
+        api.on("GET", "/account/status",
+               [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 77}}}}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+
+        yandex.setLiked("2", true);
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
+        QJsonObject event = api.requestsTo("/rotor/session/s1/feedback").last().json()["event"].toObject();
+        QCOMPARE(event["type"].toString(), QString("like"));
+        QCOMPARE(event["trackId"].toString(), QString("2:20"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestYandexService)

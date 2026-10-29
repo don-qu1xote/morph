@@ -66,6 +66,8 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(audio, &AudioEngine::finished, listens, &ListenTracker::trackEnded);
     connect(services, &ServiceManager::trackStarted, listens, &ListenTracker::trackStarted);
     connect(listens, &ListenTracker::listenFinished, services, &ServiceManager::reportListen);
+    connect(settings, &SettingsManager::likeToggled, services, &ServiceManager::setLiked);
+    connect(services, &ServiceManager::likesFetched, settings, &SettingsManager::mergeServiceLikes);
 
     QTimer* gcTimer = new QTimer(this);
     connect(gcTimer, &QTimer::timeout, this, [this]() {

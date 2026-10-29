@@ -5,6 +5,8 @@
 #include "../network/NetworkManager.h"
 #include <QHash>
 #include <QStringList>
+#include <functional>
+#include <memory>
 
 class YandexService : public BaseService {
     Q_OBJECT
@@ -21,11 +23,20 @@ public:
     void importPlaylist(const QString& url) override;
 
     void reportListen(const QString& trackId, double playedSeconds, double lengthSeconds, bool completed);
+    void setLiked(const QString& trackId, bool liked);
+    void fetchLikes();
+
+signals:
+    // allIds это все лайкнутые id, даже те, по которым /tracks не отдал данных
+    void likesFetched(const QVariantList& tracks, const QStringList& allIds);
 
 private:
     void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
     QVariantList parseYandexTracks(const QJsonArray& tracksArray);
     QString fullTrackId(const QString& trackId) const;
+    void withUid(std::function<void()> next);
+    void fetchTracksChunk(const QStringList& fullIds, const QStringList& allIds, int from,
+                          std::shared_ptr<QVariantList> result);
 
     void startWaveSession();
     void handleWaveBatch(const QJsonObject& result);
@@ -37,6 +48,8 @@ private:
     QString m_api;
     QString m_token;
     QString m_quality = "320";
+    QString m_uid;
+    QList<std::function<void()>> m_uidWaiters;
 
     // в QML в поле album уходит название, а API нужен id альбома, поэтому
     // id и длительность запоминаем, когда трек проходит через parseYandexTracks

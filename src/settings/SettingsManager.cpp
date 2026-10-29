@@ -90,6 +90,12 @@ QVariantMap SettingsManager::loadSession() {
 void SettingsManager::toggleLike(const QVariantMap& track) {
     m_playlists->toggleLike(track);
     save();
+    emit likeToggled(track, m_playlists->isLiked(track["id"].toString()));
+}
+
+void SettingsManager::mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds) {
+    m_playlists->mergeServiceLikes(service, tracks, allIds);
+    save();
 }
 
 bool SettingsManager::isLiked(const QString& trackId) {
