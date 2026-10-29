@@ -404,6 +404,135 @@ private slots:
         QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
         QVERIFY(!feedback("dislike", "1:10").isEmpty());
     }
+
+    // сессия на каждый запрос своя, трек в партии называется по первому сиду
+    void serveSessionsBySeed() {
+        api.on("POST", "/rotor/session/new", [](const HttpRequest& r) {
+            QString seed = r.json()["seeds"].toArray().first().toString();
+            static int n = 0;
+            ++n;
+            return jsonResult(QJsonObject{{"radioSessionId", QString("s%1").arg(n)},
+                                          {"batchId", "b"},
+                                          {"sequence", QJsonArray{QJsonObject{{"track", track(n, 10, seed)}}}}});
+        });
+    }
+
+    void stationWaveUsesItsSeeds() {
+        serveSessionsBySeed();
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        yandex.setWaveSettings({"settingDiversity:discover"});
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.startWave({"genre:rap"});
+        QVERIFY(wave.wait());
+        QCOMPARE(api.requestsTo("/rotor/session/new").last().json()["seeds"].toArray(), QJsonArray{"genre:rap"});
+    }
+
+    // настройки Моей волны едут сидами в новую сессию, а смена настроек её пересоздаёт
+    void myWaveSettingsBecomeSeeds() {
+        serveSessionsBySeed();
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.getWave();
+        QVERIFY(wave.wait());
+        yandex.setWaveSettings({"settingDiversity:discover", "settingLanguage:russian"});
+        yandex.getWave();
+        QVERIFY(wave.wait());
+
+        QList<HttpRequest> sessions = api.requestsTo("/rotor/session/new");
+        QCOMPARE(sessions.size(), 2);
+        QCOMPARE(sessions[0].json()["seeds"].toArray(), QJsonArray{"user:onyourwave"});
+        QCOMPARE(sessions[1].json()["seeds"].toArray(),
+                 QJsonArray({"user:onyourwave", "settingDiversity:discover", "settingLanguage:russian"}));
+    }
+
+    // переключились на другую станцию, пока старая отвечала: старая партия не всплывает
+    void switchingStationsDropsTheOldBatch() {
+        serveSessionsBySeed();
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.getWave();
+        yandex.startWave({"activity:workout"});
+        QVERIFY(wave.wait());
+        QTest::qWait(200);
+
+        QCOMPARE(wave.size(), 1);
+        QCOMPARE(wave[0][1].toList().first().toMap()["title"].toString(), QString("activity:workout"));
+    }
+
+    void foreignTrackWaveFindsTheTrackOnYandex() {
+        serveSessionsBySeed();
+        api.on("GET", "/search", [](const HttpRequest& r) {
+            QJsonObject found{{"results", QJsonArray{QJsonObject{{"id", 77}}}}};
+            return jsonResult(QJsonObject{{r.query.queryItemValue("type") + "s", found}});
+        });
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+
+        yandex.startTrackWave({{"service", "YouTube"}, {"id", "abc"}, {"artist", "Zamay"}, {"title", "Неошансон"}});
+        QVERIFY(wave.wait());
+        HttpRequest search = api.requestsTo("/search").last();
+        QCOMPARE(search.query.queryItemValue("text"), QString("Zamay - Неошансон"));
+        QCOMPARE(api.requestsTo("/rotor/session/new").last().json()["seeds"].toArray(), QJsonArray{"track:77"});
+
+        yandex.startArtistWave("Zamay");
+        QVERIFY(wave.wait());
+        QCOMPARE(api.requestsTo("/search").last().query.queryItemValue("type"), QString("artist"));
+        QCOMPARE(api.requestsTo("/rotor/session/new").last().json()["seeds"].toArray(), QJsonArray{"artist:77"});
+    }
+
+    void stationsAndSettingsForTheHomeScreen() {
+        QJsonObject workout{
+            {"id", QJsonObject{{"type", "activity"}, {"tag", "workout"}}},
+            {"name", "Тренировка"},
+            {"icon", QJsonObject{{"backgroundColor", "#ff5c00"}, {"imageUrl", "avatars.example/run/%%"}}}};
+        QJsonObject rap{{"id", QJsonObject{{"type", "genre"}, {"tag", "rap"}}},
+                        {"name", "Рэп"},
+                        {"icon", QJsonObject{{"backgroundColor", "#222222"}, {"imageUrl", "avatars.example/rap/%%"}}}};
+        QJsonObject discover{
+            {"value", "discover"}, {"name", "Незнакомое"}, {"serializedSeed", "settingDiversity:discover"}};
+        api.on("GET", "/rotor/wave/settings", [=](const HttpRequest&) {
+            QJsonObject restrictions{
+                {"diversity",
+                 QJsonObject{{"type", "enum"}, {"name", "Характер"}, {"possibleValues", QJsonArray{discover}}}}};
+            return jsonResult(
+                QJsonObject{{"blocks", QJsonArray{QJsonObject{{"type", "contexts"}, {"items", QJsonArray{workout}}}}},
+                            {"settingRestrictions", restrictions}});
+        });
+        api.on("GET", "/rotor/stations/dashboard", [=](const HttpRequest&) {
+            return jsonResult(QJsonObject{
+                {"stations", QJsonArray{QJsonObject{{"station", rap}}, QJsonObject{{"station", workout}}}}});
+        });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy stations(&yandex, &YandexService::stationsReady);
+        QSignalSpy settings(&yandex, &YandexService::waveSettingsReady);
+
+        yandex.fetchWaveStations();
+        QVERIFY(stations.wait());
+
+        QVariantList list = stations[0][0].toList();
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list[0].toMap()["seed"].toString(), QString("activity:workout"));
+        QCOMPARE(list[0].toMap()["imageUrl"].toString(), QString("https://avatars.example/run/200x200"));
+        QCOMPARE(list[1].toMap()["name"].toString(), QString("Рэп"));
+
+        QVariantMap diversity = settings[0][0].toList().first().toMap();
+        QCOMPARE(diversity["key"].toString(), QString("diversity"));
+        QCOMPARE(diversity["values"].toList().first().toMap()["seed"].toString(), QString("settingDiversity:discover"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestYandexService)

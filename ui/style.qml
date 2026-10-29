@@ -6,6 +6,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import QtQuick.Dialogs
+import "qrc:/ui/components"
 
 ApplicationWindow {
     id: window
@@ -71,6 +72,10 @@ ApplicationWindow {
 
     property var currentTrack: null
     property var currentFallback: ({})
+    // сиды волны, которая играет или играла последней
+    property string activeWave: "user:onyourwave"
+    property bool myWaveActive: currentPlaylist === "MY_VIBE" && activeWave === "user:onyourwave"
+    property var waveSettingOptions: []
     property int currentTrackIndex: -1
     property string currentView: "home"
     property string editingFileName: ""
@@ -265,6 +270,29 @@ ApplicationWindow {
         if (coversExpanded) loadDetailedCovers()
     }
 
+    // Волна по станции, треку или артисту. Очередь сбрасывается, и первая
+    // партия из onWaveReady встаёт на место текущей
+    function startStation(seeds, name) {
+        activeWave = seeds.join(",")
+        currentPlaylist = ""
+        MorphServices.startWave(seeds)
+        if (name) showToast(name.toUpperCase() + " WAVE")
+    }
+
+    function startTrackWave(track) {
+        activeWave = "track:" + track.id
+        currentPlaylist = ""
+        MorphServices.startTrackWave(track)
+        showToast("WAVE BY " + track.title.toUpperCase())
+    }
+
+    function startArtistWave(name) {
+        activeWave = "artist:" + name
+        currentPlaylist = ""
+        MorphServices.startArtistWave(name)
+        showToast(name.toUpperCase() + " WAVE")
+    }
+
     // у ссылок YouTube срок жизни записан в самом адресе: expire=<время в секундах>
     function isStreamUrlFresh(url) {
         var expire = /[?&]expire=(\d+)/.exec(url)
@@ -310,6 +338,7 @@ ApplicationWindow {
         onTriggered: {
             MorphServices.getCharts()
             MorphServices.getDailyMixes()
+            MorphServices.fetchWaveStations()
         }
     }
 
@@ -600,6 +629,7 @@ function playTrack(track, index) {
     ListModel { id: historyModel; dynamicRoles: true }
     ListModel { id: chartsModel; dynamicRoles: true }
     ListModel { id: dailyMixesModel; dynamicRoles: true }
+    ListModel { id: stationsModel }
     ListModel { id: styleFilesModel; dynamicRoles: true }
     ListModel { id: detailedTracksModel; dynamicRoles: true }
     ListModel { id: detailedCoversModel; dynamicRoles: true }
@@ -1151,10 +1181,10 @@ function playTrack(track, index) {
                                             anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 30; spacing: 5
                                             Text { text: "MY VIBE"; color: "white"; font.family: mainFont.name; font.pixelSize: 28; font.weight: Font.Black }
                                             Text { 
-                                                text: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? "PLAYING NOW" : "PERSONALIZED WAVE"
-                                                color: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? "#b57339" : "white"
-                                                font.family: mainFont.name; font.pixelSize: 14; opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 1.0 : 0.8 
-                                                font.weight: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? Font.Bold : Font.Normal
+                                                text: (myWaveActive && MorphAudio.isPlaying) ? "PLAYING NOW" : "PERSONALIZED WAVE"
+                                                color: (myWaveActive && MorphAudio.isPlaying) ? "#b57339" : "white"
+                                                font.family: mainFont.name; font.pixelSize: 14; opacity: (myWaveActive && MorphAudio.isPlaying) ? 1.0 : 0.8
+                                                font.weight: (myWaveActive && MorphAudio.isPlaying) ? Font.Bold : Font.Normal
                                             }
                                         }
                                         
@@ -1169,8 +1199,8 @@ function playTrack(track, index) {
                                                     id: vibePlayIcon
                                                     anchors.fill: parent; source: "qrc:/assets/play.svg"; smooth: true
                                                     sourceSize: Qt.size(64, 64)
-                                                    opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 0 : 1
-                                                    rotation: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 45 : 0
+                                                    opacity: (myWaveActive && MorphAudio.isPlaying) ? 0 : 1
+                                                    rotation: (myWaveActive && MorphAudio.isPlaying) ? 45 : 0
                                                     layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
                                                     Behavior on opacity { NumberAnimation { duration: 200 } }
                                                     Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -1180,8 +1210,8 @@ function playTrack(track, index) {
                                                     id: vibePauseIcon
                                                     anchors.fill: parent; source: "qrc:/assets/pause.svg"; smooth: true
                                                     sourceSize: Qt.size(64, 64)
-                                                    opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 1 : 0
-                                                    rotation: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 0 : -45
+                                                    opacity: (myWaveActive && MorphAudio.isPlaying) ? 1 : 0
+                                                    rotation: (myWaveActive && MorphAudio.isPlaying) ? 0 : -45
                                                     layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
                                                     Behavior on opacity { NumberAnimation { duration: 200 } }
                                                     Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -1191,13 +1221,45 @@ function playTrack(track, index) {
                                             MouseArea { 
                                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor; 
                                                 onClicked: (mouse) => {
-                                                    if (currentPlaylist === "MY_VIBE") {
+                                                    if (myWaveActive) {
                                                         MorphAudio.isPlaying ? MorphAudio.pause() : MorphAudio.resume()
-                                                    } else {
+                                                    } else if (activeWave === "user:onyourwave") {
                                                         MorphServices.getWave()
+                                                    } else {
+                                                        startStation(["user:onyourwave"])
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        Rectangle {
+                                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.rightMargin: 110
+                                            width: 40; height: 40; radius: 20; color: "#333"
+                                            Image {
+                                                anchors.centerIn: parent; width: 20; height: 20; source: "qrc:/assets/cog.svg"; sourceSize: Qt.size(64, 64)
+                                                layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    waveSettingsPopup.selected = MorphSettings.getWaveSettings()
+                                                    waveSettingsPopup.open()
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 20
+                                        visible: stationsModel.count > 0
+                                        Text { text: "WAVES"; color: "white"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        StationsRow {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 100
+                                            model: stationsModel
+                                            textColor: "white"; cardColor: "#1a1a1a"; borderColor: "#333333"; accentColor: "#b57339"
+                                            fontFamily: mainFont.name
+                                            activeSeed: currentPlaylist === "MY_VIBE" ? activeWave : ""
+                                            onPicked: (seed, name) => startStation([seed], name)
                                         }
                                     }
 
@@ -3325,7 +3387,7 @@ function playTrack(track, index) {
         property bool openedUpwards: false
         parent: Overlay.overlay
         width: 170; height: {
-            var count = 3
+            var count = 5
             if (openedUpwards) count++
             if (currentView === "library" && currentPlaylist !== "" && saveLastImport) count++
             return (count * 40) + 10
@@ -3394,6 +3456,28 @@ function playTrack(track, index) {
                         } else if (targetContextTrack && targetContextTrack.service === "YouTube") {
                             MorphSettings.copyToClipboard("https://www.youtube.com/watch?v=" + targetContextTrack.id)
                         }
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: waveItemMouse.containsMouse ? "#333" : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "WAVE FROM TRACK"; color: "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: waveItemMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) startTrackWave(targetContextTrack)
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: artistWaveMouse.containsMouse ? "#333" : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "ARTIST WAVE"; color: "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: artistWaveMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) startArtistWave(targetContextTrack.artist.split(/\s*,\s*|\s+feat\.\s+/i)[0])
                         trackContextMenu.close()
                     }
                 }
@@ -3624,6 +3708,11 @@ function playTrack(track, index) {
                 chartsModel.append(item)
             }
         }
+        function onStationsReady(stations) {
+            stationsModel.clear()
+            for (var i = 0; i < stations.length; i++) stationsModel.append(stations[i])
+        }
+        function onWaveSettingsReady(options) { waveSettingOptions = options }
         function onFallbackChosen(trackId, source) {
             if (currentTrack && currentTrack.id === trackId) currentFallback = source
         }
@@ -3831,6 +3920,21 @@ function playTrack(track, index) {
             isRecovering = true
             lastKnownPosition = MorphAudio.position
             MorphServices.resolve(currentTrack.service, currentTrack.id)
+        }
+    }
+
+    WaveSettingsPopup {
+        id: waveSettingsPopup
+        parent: Overlay.overlay
+        x: (parent.width - width) / 2; y: (parent.height - height) / 2
+        options: waveSettingOptions
+        backgroundColor: "#141414"; textColor: "white"; subtextColor: "#888888"
+        chipColor: "#1a1a1a"; borderColor: "#333333"; accentColor: "#b57339"
+        fontFamily: mainFont.name
+        onSettingPicked: (key, seed) => {
+            MorphSettings.setWaveSetting(key, seed)
+            selected = MorphSettings.getWaveSettings()
+            if (myWaveActive) startStation(["user:onyourwave"])
         }
     }
 
@@ -4655,6 +4759,38 @@ function playTrack(track, index) {
                                                     loadNextChunk()
                                                     playTrack(tracksList[0], 0)
                                                 }
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.preferredWidth: artistWaveText.implicitWidth + 28
+                                        Layout.preferredHeight: 32
+                                        radius: 16
+                                        color: artistWavePill.containsMouse ? "#2a2a2a" : "transparent"
+                                        border.color: "#b57339"
+                                        border.width: 1
+                                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                                        Text {
+                                            id: artistWaveText
+                                            anchors.centerIn: parent
+                                            text: "ARTIST WAVE"
+                                            color: "#b57339"
+                                            font.family: mainFont.name
+                                            font.pixelSize: 11
+                                            font.weight: Font.Black
+                                        }
+
+                                        MouseArea {
+                                            id: artistWavePill
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            hoverEnabled: true
+                                            onClicked: {
+                                                if (!selectedArtist) return
+                                                startArtistWave(selectedArtist.name)
+                                                artistProfilePopup.close()
                                             }
                                         }
                                     }

@@ -20,6 +20,7 @@
 
 - **Triple Service Integration**: Search and play tracks from Yandex Music, SoundCloud and YouTube Music in a single interface.
 - **My Vibe (Personalized Wave)**: Direct integration with Yandex Music's algorithmic radio, complete with listening telemetry so your recommendations keep improving.
+- **Waves**: Start a wave from any track or artist, play Yandex stations (activities, genres, moods) from the home screen and tune My Vibe by character, mood and language.
 - **Mixed Wave**: Similar tracks from SoundCloud and YouTube between the Yandex ones, plus liked tracks Yandex has removed. Yandex tracks keep their order and feedback; turn **Mixed Wave** off in Settings for the plain Yandex wave.
   - Runs through rotor sessions and reports start, skip (with real listened seconds), finish, like and dislike back to Yandex.
   - Likes are synced with your Yandex account both ways.

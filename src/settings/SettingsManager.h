@@ -74,6 +74,9 @@ public slots:
     bool getDiscordRpcEnabled();
     void setMixedWaveEnabled(bool enabled);
     bool getMixedWaveEnabled();
+    // настройки Моей волны: ключ (diversity, moodEnergy, language) и сид значения
+    void setWaveSetting(const QString& key, const QString& seed);
+    QVariantMap getWaveSettings();
 
     Q_INVOKABLE QVariantMap getAboutInfo();
 

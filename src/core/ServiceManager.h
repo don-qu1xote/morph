@@ -23,6 +23,11 @@ public slots:
     void search(const QString& query, const QString& serviceName = "all");
     void getCharts();
     void getWave();
+    void startWave(const QStringList& seeds);
+    void startTrackWave(const QVariantMap& track);
+    void startArtistWave(const QString& artistName);
+    void setWaveSettings(const QStringList& settingSeeds);
+    void fetchWaveStations();
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
@@ -54,6 +59,8 @@ signals:
     void likesFetched(const QString& serviceName, const QVariantList& tracks, const QStringList& allIds);
     // трек играет с замены: service, id, artist, title, webUrl, index и total
     void fallbackChosen(const QString& trackId, const QVariantMap& source);
+    void stationsReady(const QVariantList& stations);
+    void waveSettingsReady(const QVariantList& options);
 
 private:
     void attach(BaseService* service);

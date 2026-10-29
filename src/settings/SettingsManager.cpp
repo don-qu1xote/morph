@@ -282,6 +282,19 @@ bool SettingsManager::getMixedWaveEnabled() {
     return m_data["mixed_wave"].toBool();
 }
 
+void SettingsManager::setWaveSetting(const QString& key, const QString& seed) {
+    QVariantMap wave = getWaveSettings();
+    if (seed.isEmpty()) wave.remove(key);
+    else wave[key] = seed;
+    m_data["wave_settings"] = QJsonObject::fromVariantMap(wave);
+    save();
+    emit settingsChanged();
+}
+
+QVariantMap SettingsManager::getWaveSettings() {
+    return m_data["wave_settings"].toObject().toVariantMap();
+}
+
 QVariantMap SettingsManager::getAboutInfo() {
     QVariantMap info;
 #ifdef MORPH_VERSION

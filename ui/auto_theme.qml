@@ -6,6 +6,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import QtQuick.Dialogs
+import "qrc:/ui/components"
 
 ApplicationWindow {
     id: window
@@ -105,6 +106,10 @@ ApplicationWindow {
 
     property var currentTrack: null
     property var currentFallback: ({})
+    // сиды волны, которая играет или играла последней
+    property string activeWave: "user:onyourwave"
+    property bool myWaveActive: currentPlaylist === "MY_VIBE" && activeWave === "user:onyourwave"
+    property var waveSettingOptions: []
     property int currentTrackIndex: -1
     property string currentView: "home"
     property string editingFileName: ""
@@ -181,6 +186,29 @@ ApplicationWindow {
         if (coversExpanded) loadDetailedCovers()
     }
 
+    // Волна по станции, треку или артисту. Очередь сбрасывается, и первая
+    // партия из onWaveReady встаёт на место текущей
+    function startStation(seeds, name) {
+        activeWave = seeds.join(",")
+        currentPlaylist = ""
+        MorphServices.startWave(seeds)
+        if (name) showToast(name.toUpperCase() + " WAVE")
+    }
+
+    function startTrackWave(track) {
+        activeWave = "track:" + track.id
+        currentPlaylist = ""
+        MorphServices.startTrackWave(track)
+        showToast("WAVE BY " + track.title.toUpperCase())
+    }
+
+    function startArtistWave(name) {
+        activeWave = "artist:" + name
+        currentPlaylist = ""
+        MorphServices.startArtistWave(name)
+        showToast(name.toUpperCase() + " WAVE")
+    }
+
     // у ссылок YouTube срок жизни записан в самом адресе: expire=<время в секундах>
     function isStreamUrlFresh(url) {
         var expire = /[?&]expire=(\d+)/.exec(url)
@@ -224,6 +252,7 @@ ApplicationWindow {
         onTriggered: {
             MorphServices.getCharts()
             MorphServices.getDailyMixes()
+            MorphServices.fetchWaveStations()
         }
     }
 
@@ -449,6 +478,7 @@ ApplicationWindow {
     ListModel { id: historyModel; Component.onCompleted: forceRole(this) }
     ListModel { id: chartsModel; Component.onCompleted: forceRole(this) }
     ListModel { id: dailyMixesModel }
+    ListModel { id: stationsModel }
     ListModel { id: styleFilesModel }
     ListModel { id: detailedTracksModel }
     ListModel { id: detailedCoversModel }
@@ -1053,10 +1083,10 @@ ApplicationWindow {
                                             anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 30; spacing: 5
                                             Text { text: "MY VIBE"; color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 28; font.weight: Font.Black }
                                             Text { 
-                                                text: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? "PLAYING NOW" : "PERSONALIZED WAVE"
-                                                color: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? systemTheme.accent : systemTheme.text
-                                                font.family: mainFont.name; font.pixelSize: 14; opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 1.0 : 0.8 
-                                                font.weight: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? Font.Bold : Font.Normal
+                                                text: (myWaveActive && MorphAudio.isPlaying) ? "PLAYING NOW" : "PERSONALIZED WAVE"
+                                                color: (myWaveActive && MorphAudio.isPlaying) ? systemTheme.accent : systemTheme.text
+                                                font.family: mainFont.name; font.pixelSize: 14; opacity: (myWaveActive && MorphAudio.isPlaying) ? 1.0 : 0.8
+                                                font.weight: (myWaveActive && MorphAudio.isPlaying) ? Font.Bold : Font.Normal
                                             }
                                         }
                                         
@@ -1072,8 +1102,8 @@ ApplicationWindow {
                                                     id: vibePlayIcon
                                                     anchors.fill: parent; source: "qrc:/assets/play.svg"; smooth: true
                                                     sourceSize: Qt.size(64, 64)
-                                                    opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 0 : 1
-                                                    rotation: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 45 : 0
+                                                    opacity: (myWaveActive && MorphAudio.isPlaying) ? 0 : 1
+                                                    rotation: (myWaveActive && MorphAudio.isPlaying) ? 45 : 0
                                                     layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.text }
                                                     Behavior on opacity { NumberAnimation { duration: 200 } }
                                                     Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -1083,8 +1113,8 @@ ApplicationWindow {
                                                     id: vibePauseIcon
                                                     anchors.fill: parent; source: "qrc:/assets/pause.svg"; smooth: true
                                                     sourceSize: Qt.size(64, 64)
-                                                    opacity: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 1 : 0
-                                                    rotation: (currentPlaylist === "MY_VIBE" && MorphAudio.isPlaying) ? 0 : -45
+                                                    opacity: (myWaveActive && MorphAudio.isPlaying) ? 1 : 0
+                                                    rotation: (myWaveActive && MorphAudio.isPlaying) ? 0 : -45
                                                     layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.text }
                                                     Behavior on opacity { NumberAnimation { duration: 200 } }
                                                     Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -1094,13 +1124,45 @@ ApplicationWindow {
                                             MouseArea { 
                                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor; 
                                                 onClicked: (mouse) => {
-                                                    if (currentPlaylist === "MY_VIBE") {
+                                                    if (myWaveActive) {
                                                         MorphAudio.isPlaying ? MorphAudio.pause() : MorphAudio.resume()
-                                                    } else {
+                                                    } else if (activeWave === "user:onyourwave") {
                                                         MorphServices.getWave()
+                                                    } else {
+                                                        startStation(["user:onyourwave"])
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        Rectangle {
+                                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.rightMargin: 110
+                                            width: 40; height: 40; radius: 20; color: systemTheme.button
+                                            Image {
+                                                anchors.centerIn: parent; width: 20; height: 20; source: "qrc:/assets/cog.svg"; sourceSize: Qt.size(64, 64)
+                                                layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.text }
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    waveSettingsPopup.selected = MorphSettings.getWaveSettings()
+                                                    waveSettingsPopup.open()
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 20
+                                        visible: stationsModel.count > 0
+                                        Text { text: "WAVES"; color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        StationsRow {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 100
+                                            model: stationsModel
+                                            textColor: systemTheme.text; cardColor: systemTheme.card; borderColor: systemTheme.border; accentColor: systemTheme.accent
+                                            fontFamily: mainFont.name
+                                            activeSeed: currentPlaylist === "MY_VIBE" ? activeWave : ""
+                                            onPicked: (seed, name) => startStation([seed], name)
                                         }
                                     }
 
@@ -2937,7 +2999,7 @@ ApplicationWindow {
         property bool openedUpwards: false
         parent: Overlay.overlay
         width: 160; height: {
-            var count = 2
+            var count = 4
             if (openedUpwards) count++
             if (currentView === "library" && currentPlaylist !== "" && saveLastImport) count++
             return (count * 40) + 10
@@ -2963,6 +3025,28 @@ ApplicationWindow {
                         } else if (targetContextTrack && targetContextTrack.service === "YouTube") {
                             MorphSettings.copyToClipboard("https://www.youtube.com/watch?v=" + targetContextTrack.id)
                         }
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: waveItemMouse.containsMouse ? systemTheme.container : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "WAVE FROM TRACK"; color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: waveItemMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) startTrackWave(targetContextTrack)
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: artistWaveMouse.containsMouse ? systemTheme.container : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "ARTIST WAVE"; color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: artistWaveMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) startArtistWave(targetContextTrack.artist.split(/\s*,\s*|\s+feat\.\s+/i)[0])
                         trackContextMenu.close()
                     }
                 }
@@ -3108,6 +3192,11 @@ ApplicationWindow {
                 chartsModel.append(item)
             }
         }
+        function onStationsReady(stations) {
+            stationsModel.clear()
+            for (var i = 0; i < stations.length; i++) stationsModel.append(stations[i])
+        }
+        function onWaveSettingsReady(options) { waveSettingOptions = options }
         function onFallbackChosen(trackId, source) {
             if (currentTrack && currentTrack.id === trackId) currentFallback = source
         }
@@ -3278,6 +3367,21 @@ ApplicationWindow {
             isRecovering = true
             lastKnownPosition = MorphAudio.position
             MorphServices.resolve(currentTrack.service, currentTrack.id)
+        }
+    }
+
+    WaveSettingsPopup {
+        id: waveSettingsPopup
+        parent: Overlay.overlay
+        x: (parent.width - width) / 2; y: (parent.height - height) / 2
+        options: waveSettingOptions
+        backgroundColor: systemTheme.surface; textColor: systemTheme.text; subtextColor: systemTheme.subtext
+        chipColor: systemTheme.container; borderColor: systemTheme.border; accentColor: systemTheme.accent
+        fontFamily: mainFont.name
+        onSettingPicked: (key, seed) => {
+            MorphSettings.setWaveSetting(key, seed)
+            selected = MorphSettings.getWaveSettings()
+            if (myWaveActive) startStation(["user:onyourwave"])
         }
     }
 

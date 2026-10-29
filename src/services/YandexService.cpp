@@ -283,6 +283,136 @@ void YandexService::getCharts() {
 // Волна через сессии, как в нынешних клиентах Яндекса: сессия выдаёт партии треков
 // и принимает фидбек (старт, скип, дослушал), по нему волна и подстраивается.
 // Старая станция осталась запасным вариантом, если сессия не создалась
+// Волна по любым сидам: user:onyourwave, track:ID, artist:ID, genre:rap,
+// activity:workout. Старая сессия бросается, а её запоздалые ответы отсекает
+// номер поколения
+void YandexService::startWave(const QStringList& seeds) {
+    m_waveSeeds = seeds;
+    resetWaveSession();
+    getWave();
+}
+
+void YandexService::resetWaveSession() {
+    ++m_waveGeneration;
+    m_waveSession.clear();
+    m_waveBatch.clear();
+    m_waveQueue.clear();
+    m_waveLoading = false;
+}
+
+// настройки действуют на Мою волну, у станций их нет
+QStringList YandexService::sessionSeeds() const {
+    if (m_waveSeeds == QStringList{"user:onyourwave"}) return m_waveSeeds + m_waveSettingSeeds;
+    return m_waveSeeds;
+}
+
+void YandexService::setWaveSettings(const QStringList& settingSeeds) {
+    if (settingSeeds == m_waveSettingSeeds) return;
+    m_waveSettingSeeds = settingSeeds;
+    if (m_waveSeeds == QStringList{"user:onyourwave"}) resetWaveSession();
+}
+
+void YandexService::startTrackWave(const QVariantMap& track) {
+    if (track["service"].toString() == "Yandex") {
+        startWave({"track:" + track["id"].toString()});
+        return;
+    }
+    // трек с SoundCloud или YouTube: волна по такому же из каталога Яндекса
+    QString query = track["artist"].toString() + " - " + track["title"].toString();
+    findFirst("track", query, [this](const QString& id) { startWave({"track:" + id}); });
+}
+
+void YandexService::startArtistWave(const QString& artistName) {
+    findFirst("artist", artistName, [this](const QString& id) { startWave({"artist:" + id}); });
+}
+
+void YandexService::findFirst(const QString& type, const QString& text, std::function<void(const QString&)> found) {
+    if (m_token.isEmpty()) return;
+
+    QUrl url(m_api + "/search");
+    QUrlQuery q;
+    q.addQueryItem("text", text);
+    q.addQueryItem("type", type);
+    q.addQueryItem("page", "0");
+    url.setQuery(q);
+
+    net->get(url, yandexHeaders(m_token), [this, type, text, found](QNetworkReply* reply) {
+        QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+        QJsonArray results = result[type + "s"].toObject()["results"].toArray();
+        if (reply->error() != QNetworkReply::NoError || results.isEmpty()) {
+            emit errorOccurred("Not found on Yandex: " + text);
+            return;
+        }
+        found(results[0].toObject()["id"].toVariant().toString());
+    });
+}
+
+static QVariantMap parseStation(const QJsonObject& station) {
+    QJsonObject id = station["id"].toObject();
+    QJsonObject icon = station["icon"].toObject();
+    QString image = icon["imageUrl"].toString().replace("%%", "200x200");
+    if (!image.isEmpty() && !image.startsWith("http")) image = "https://" + image;
+    return {{"name", station["name"].toString()},
+            {"seed", id["type"].toString() + ":" + id["tag"].toString()},
+            {"imageUrl", image},
+            {"color", icon["backgroundColor"].toString()}};
+}
+
+// Станции для главной: занятия из настроек волны и личная подборка станций.
+// Тут же приходят варианты настроек Моей волны с готовыми сидами
+void YandexService::fetchWaveStations() {
+    if (m_token.isEmpty()) return;
+
+    QUrl url(m_api + "/rotor/wave/settings");
+    url.setQuery("seeds=user:onyourwave");
+    net->get(
+        url, yandexHeaders(m_token),
+        [this](QNetworkReply* reply) {
+            QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+
+            QVariantList stations;
+            for (const auto& block : result["blocks"].toArray()) {
+                for (const auto& item : block.toObject()["items"].toArray())
+                    stations.append(parseStation(item.toObject()));
+            }
+
+            QVariantList options;
+            QJsonObject restrictions = result["settingRestrictions"].toObject();
+            for (const QString& key : {"diversity", "moodEnergy", "language"}) {
+                QJsonObject setting = restrictions[key].toObject();
+                QVariantList values;
+                for (const auto& v : setting["possibleValues"].toArray()) {
+                    QJsonObject value = v.toObject();
+                    values.append(QVariantMap{{"name", value["name"].toString()},
+                                              {"seed", value["serializedSeed"].toString()},
+                                              {"unspecified", value["unspecified"].toBool()}});
+                }
+                if (!values.isEmpty())
+                    options.append(QVariantMap{{"key", key}, {"name", setting["name"].toString()}, {"values", values}});
+            }
+            if (!options.isEmpty()) emit waveSettingsReady(options);
+            fetchDashboard(stations);
+        },
+        false);
+}
+
+void YandexService::fetchDashboard(QVariantList stations) {
+    net->get(
+        QUrl(m_api + "/rotor/stations/dashboard"), yandexHeaders(m_token),
+        [this, stations](QNetworkReply* reply) mutable {
+            QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+            for (const auto& s : result["stations"].toArray()) {
+                QVariantMap station = parseStation(s.toObject()["station"].toObject());
+                bool known = std::any_of(stations.cbegin(), stations.cend(), [&station](const QVariant& k) {
+                    return k.toMap()["seed"] == station["seed"];
+                });
+                if (!known) stations.append(station);
+            }
+            if (!stations.isEmpty()) emit stationsReady(stations);
+        },
+        false);
+}
+
 void YandexService::getWave() {
     if (m_token.isEmpty()) return;
 
@@ -301,9 +431,11 @@ void YandexService::getWave() {
     QMap<QString, QByteArray> headers = yandexHeaders(m_token);
     headers["Content-Type"] = "application/json";
     QUrl url(QString("%1/rotor/session/%2/tracks").arg(m_api, m_waveSession));
+    int generation = m_waveGeneration;
     net->post(
         url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers,
-        [this](QNetworkReply* reply) {
+        [this, generation](QNetworkReply* reply) {
+            if (generation != m_waveGeneration) return;
             if (reply->error() != QNetworkReply::NoError) {
                 getWaveFromStation();
                 return;
@@ -322,16 +454,18 @@ void YandexService::getWave() {
 
 void YandexService::startWaveSession() {
     QJsonObject body;
-    body["seeds"] = QJsonArray{"user:onyourwave"};
+    body["seeds"] = QJsonArray::fromStringList(sessionSeeds());
     body["includeTracksInResponse"] = true;
     if (!m_waveQueue.isEmpty()) body["queue"] = QJsonArray::fromStringList(m_waveQueue);
 
     QMap<QString, QByteArray> headers = yandexHeaders(m_token);
     headers["Content-Type"] = "application/json";
     QUrl url(m_api + "/rotor/session/new");
+    int generation = m_waveGeneration;
     net->post(
         url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers,
-        [this](QNetworkReply* reply) {
+        [this, generation](QNetworkReply* reply) {
+            if (generation != m_waveGeneration) return;
             if (reply->error() != QNetworkReply::NoError) {
                 getWaveFromStation();
                 return;
@@ -368,8 +502,10 @@ void YandexService::handleWaveBatch(const QJsonObject& result) {
 }
 
 void YandexService::getWaveFromStation() {
-    QUrl url(m_api + "/rotor/station/user:onyourwave/tracks");
-    net->get(url, yandexHeaders(m_token), [this](QNetworkReply* reply) {
+    QUrl url(QString("%1/rotor/station/%2/tracks").arg(m_api, m_waveSeeds.value(0, "user:onyourwave")));
+    int generation = m_waveGeneration;
+    net->get(url, yandexHeaders(m_token), [this, generation](QNetworkReply* reply) {
+        if (generation != m_waveGeneration) return;
         m_waveLoading = false;
         if (reply->error() != QNetworkReply::NoError) return;
         QJsonArray sequence = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["sequence"].toArray();

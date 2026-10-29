@@ -27,6 +27,14 @@ public:
     void setLiked(const QString& trackId, bool liked);
     void dislike(const QString& trackId);
     void fetchLikes();
+
+    // волна по сидам: user:onyourwave, track:ID, artist:ID, genre:rap и т.п.
+    void startWave(const QStringList& seeds);
+    void startTrackWave(const QVariantMap& track);
+    void startArtistWave(const QString& artistName);
+    // настройки Моей волны сидами вида settingDiversity:discover
+    void setWaveSettings(const QStringList& settingSeeds);
+    void fetchWaveStations();
     // false для треков, которые Яндекс знает, но больше не отдаёт
     bool isAvailable(const QString& trackId) const { return !m_unavailable.contains(trackId); }
 
@@ -35,6 +43,10 @@ signals:
     void likesFetched(const QVariantList& tracks, const QStringList& allIds);
     // трек есть в базе, но не отдаётся (убран из каталога); длительность 0, если неизвестна
     void streamUnavailable(const QString& trackId, const QString& artist, const QString& title, qint64 durationMs);
+    // name, seed, imageUrl, color
+    void stationsReady(const QVariantList& stations);
+    // key, name и values: name, seed, unspecified
+    void waveSettingsReady(const QVariantList& options);
 
 private:
     void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
@@ -46,6 +58,10 @@ private:
                           std::shared_ptr<QVariantList> result);
 
     void startWaveSession();
+    void resetWaveSession();
+    QStringList sessionSeeds() const;
+    void findFirst(const QString& type, const QString& text, std::function<void(const QString&)> found);
+    void fetchDashboard(QVariantList stations);
     void handleWaveBatch(const QJsonObject& result);
     void getWaveFromStation();
     void sendWaveFeedback(const QString& type, const QString& trackId = QString(), double playedSeconds = -1);
@@ -74,6 +90,9 @@ private:
     QHash<QString, QString> m_waveBatchOf;
     QStringList m_waveQueue;
     bool m_waveLoading = false;
+    int m_waveGeneration = 0;
+    QStringList m_waveSeeds = {"user:onyourwave"};
+    QStringList m_waveSettingSeeds;
 };
 
 #endif

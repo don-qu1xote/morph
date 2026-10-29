@@ -49,6 +49,8 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         }
     });
 
+    connect(yandex, &YandexService::stationsReady, this, &ServiceManager::stationsReady);
+    connect(yandex, &YandexService::waveSettingsReady, this, &ServiceManager::waveSettingsReady);
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
 
@@ -120,6 +122,26 @@ void ServiceManager::getCharts() {
 
 void ServiceManager::getWave() {
     for (const auto& [name, s] : m_services) s->getWave();
+}
+
+void ServiceManager::startWave(const QStringList& seeds) {
+    yandex->startWave(seeds);
+}
+
+void ServiceManager::startTrackWave(const QVariantMap& track) {
+    yandex->startTrackWave(track);
+}
+
+void ServiceManager::startArtistWave(const QString& artistName) {
+    yandex->startArtistWave(artistName);
+}
+
+void ServiceManager::setWaveSettings(const QStringList& settingSeeds) {
+    yandex->setWaveSettings(settingSeeds);
+}
+
+void ServiceManager::fetchWaveStations() {
+    yandex->fetchWaveStations();
 }
 
 void ServiceManager::getDailyMixes() {

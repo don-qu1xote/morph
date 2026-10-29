@@ -3,6 +3,8 @@
     <file>ui/style.qml</file>
     <file>ui/style_white.qml</file>
     <file>ui/auto_theme.qml</file>
+    <file>ui/components/StationsRow.qml</file>
+    <file>ui/components/WaveSettingsPopup.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
     <file>assets/cog.svg</file>
