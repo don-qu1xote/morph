@@ -72,7 +72,7 @@ add_library(morph_core STATIC
 if(APPLE)
     target_sources(morph_core PRIVATE src/core/MacNowPlaying.h src/core/MacNowPlaying.mm)
     set_source_files_properties(src/core/MacNowPlaying.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-    target_link_libraries(morph_core PUBLIC "-framework Foundation" "-framework MediaPlayer")
+    target_link_libraries(morph_core PUBLIC "-framework AppKit" "-framework Foundation" "-framework MediaPlayer")
 else()
     target_sources(morph_core PRIVATE
         src/core/MprisRootAdaptor.h src/core/MprisPlayerAdaptor.h src/core/MprisPlayerAdaptor.cpp

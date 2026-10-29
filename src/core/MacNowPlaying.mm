@@ -1,10 +1,15 @@
+#import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 
 #include "MacNowPlaying.h"
 #include "../audio/AudioEngine.h"
 
-MacNowPlaying::MacNowPlaying(AudioEngine* audio, QObject* parent) : QObject(parent), m_audio(audio) {
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+
+MacNowPlaying::MacNowPlaying(AudioEngine* audio, QObject* parent)
+    : QObject(parent), m_audio(audio), m_network(new QNetworkAccessManager(this)) {
     MPRemoteCommandCenter* center = [MPRemoteCommandCenter sharedCommandCenter];
 
     // хэндлеры зовутся на главном потоке, так что дёргаем движок напрямую
@@ -55,7 +60,25 @@ MacNowPlaying::~MacNowPlaying() {
 
 void MacNowPlaying::setTrack(const QVariantMap& track) {
     m_track = track;
+
+    QString coverUrl = track.value("coverUrl").toString();
+    if (coverUrl != m_coverUrl) {
+        m_coverUrl = coverUrl;
+        m_cover.clear();
+        if (!coverUrl.isEmpty()) loadCover(coverUrl);
+    }
     publish();
+}
+
+void MacNowPlaying::loadCover(const QString& url) {
+    QNetworkReply* reply = m_network->get(QNetworkRequest(QUrl(url)));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
+        reply->deleteLater();
+        // пока качали, трек могли переключить, тогда обложка уже чужая
+        if (url != m_coverUrl || reply->error() != QNetworkReply::NoError) return;
+        m_cover = reply->readAll();
+        publish();
+    });
 }
 
 void MacNowPlaying::publish() {
@@ -66,6 +89,15 @@ void MacNowPlaying::publish() {
     info[MPMediaItemPropertyPlaybackDuration] = @(m_audio->duration() / 1000.0);
     info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(m_audio->position() / 1000.0);
     info[MPNowPlayingInfoPropertyPlaybackRate] = @(m_audio->isPlaying() ? 1.0 : 0.0);
+
+    if (!m_cover.isEmpty()) {
+        NSImage* image = [[NSImage alloc] initWithData:m_cover.toNSData()];
+        if (image) {
+            info[MPMediaItemPropertyArtwork] =
+                [[MPMediaItemArtwork alloc] initWithBoundsSize:image.size
+                                                requestHandler:^NSImage*(CGSize size) { return image; }];
+        }
+    }
 
     MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
     center.nowPlayingInfo = info;
