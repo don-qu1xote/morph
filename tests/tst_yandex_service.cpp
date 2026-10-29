@@ -28,6 +28,20 @@ class TestYandexService : public QObject {
         QVERIFY(results.wait());
     }
 
+    // Фидбек уходит отдельными запросами, и до сервера они доходят в любом порядке:
+    // QNetworkAccessManager держит несколько соединений сразу. Поэтому событие
+    // ищем по типу и треку, а не по позиции в списке
+    QJsonObject feedback(const QString& type, const QString& trackId = QString()) const {
+        for (const HttpRequest& r : api.requestsTo("/rotor/session/s1/feedback")) {
+            QJsonObject body = r.json();
+            QJsonObject event = body["event"].toObject();
+            if (event["type"].toString() == type && (trackId.isEmpty() || event["trackId"].toString() == trackId)) {
+                return body;
+            }
+        }
+        return {};
+    }
+
     // сессия s1 с двумя треками, партия b1
     void serveWave() {
         api.on("POST", "/rotor/session/new", [](const HttpRequest&) {
@@ -98,9 +112,7 @@ private slots:
         QCOMPARE(start.json()["seeds"].toArray(), QJsonArray{"user:onyourwave"});
 
         QVERIFY(api.waitFor("/rotor/session/s1/feedback"));
-        QJsonObject feedback = api.requestsTo("/rotor/session/s1/feedback").last().json();
-        QCOMPARE(feedback["event"].toObject()["type"].toString(), QString("radioStarted"));
-        QCOMPARE(feedback["batchId"].toString(), QString("b1"));
+        QCOMPARE(feedback("radioStarted")["batchId"].toString(), QString("b1"));
     }
 
     void waveTrackEventsCarryRealSeconds() {
@@ -118,16 +130,19 @@ private slots:
         yandex.reportPlay("2", "");
         yandex.reportListen("2", 199, 200, true);
         QVERIFY(api.waitFor("/rotor/session/s1/feedback", 5));
+        QTest::qWait(100);
+        QCOMPARE(api.requestsTo("/rotor/session/s1/feedback").size(), 5);
 
-        QList<HttpRequest> events = api.requestsTo("/rotor/session/s1/feedback").mid(1);
-        QStringList types;
-        for (const HttpRequest& r : events) types << r.json()["event"].toObject()["type"].toString();
-        QCOMPARE(types, QStringList({"trackStarted", "skip", "trackStarted", "trackFinished"}));
+        QVERIFY(!feedback("trackStarted", "1:10").isEmpty());
+        QVERIFY(!feedback("trackStarted", "2:20").isEmpty());
 
-        QJsonObject skip = events[1].json()["event"].toObject();
-        QCOMPARE(skip["trackId"].toString(), QString("1:10"));
-        QCOMPARE(skip["totalPlayedSeconds"].toDouble(), 12.5);
-        QCOMPARE(events[1].json()["batchId"].toString(), QString("b1"));
+        QJsonObject skip = feedback("skip", "1:10");
+        QCOMPARE(skip["event"].toObject()["totalPlayedSeconds"].toDouble(), 12.5);
+        QCOMPARE(skip["batchId"].toString(), QString("b1"));
+
+        QJsonObject finished = feedback("trackFinished", "2:20");
+        QCOMPARE(finished["event"].toObject()["totalPlayedSeconds"].toDouble(), 199.0);
+        QVERIFY(feedback("skip", "2:20").isEmpty());
     }
 
     void nextBatchSendsQueueOfIssuedTracks() {
@@ -151,7 +166,7 @@ private slots:
 
         yandex.reportPlay("3", "");
         QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
-        QCOMPARE(api.requestsTo("/rotor/session/s1/feedback").last().json()["batchId"].toString(), QString("b2"));
+        QCOMPARE(feedback("trackStarted", "3:30")["batchId"].toString(), QString("b2"));
     }
 
     void expiredSessionStartsNewOne() {
@@ -293,9 +308,7 @@ private slots:
 
         yandex.setLiked("2", true);
         QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
-        QJsonObject event = api.requestsTo("/rotor/session/s1/feedback").last().json()["event"].toObject();
-        QCOMPARE(event["type"].toString(), QString("like"));
-        QCOMPARE(event["trackId"].toString(), QString("2:20"));
+        QVERIFY(!feedback("like", "2:20").isEmpty());
     }
     void refusedDownloadMeansUnavailable() {
         api.on("GET", "/tracks/101/download-info", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
@@ -387,8 +400,7 @@ private slots:
                  QString("1:10"));
 
         QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
-        QJsonObject event = api.requestsTo("/rotor/session/s1/feedback").last().json()["event"].toObject();
-        QCOMPARE(event["type"].toString(), QString("dislike"));
+        QVERIFY(!feedback("dislike", "1:10").isEmpty());
     }
 };
 
