@@ -5,16 +5,18 @@
 macOS:
 
 ```bash
-brew install qt cmake openssl yt-dlp ffmpeg deno pipx
-pipx install clang-format==18.1.8
+brew install qt cmake openssl yt-dlp ffmpeg deno uv
+uv tool install --python 3.12 clang-format==18.1.8
 ```
 
 `deno` нужен yt-dlp: без него он больше не открывает YouTube. clang-format
 закреплён на 18.1.8, потому что разные версии форматируют по-разному, и то,
-что прошло локально, упало бы в CI.
+что прошло локально, упало бы в CI. Ставится через uv, а не pipx: uv сам
+скачивает Python, а pipx на питоне из brew падает (`pyexpat`, `Symbol not
+found`).
 
 Linux (Ubuntu 24.04): пакеты из `docker/Dockerfile` плюс
-`pip install --user clang-format==18.1.8`.
+`uv tool install clang-format==18.1.8`.
 
 ## Каждый день
 

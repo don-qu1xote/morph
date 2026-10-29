@@ -11,8 +11,8 @@ actual=$(clang-format --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' 
 if [ "$actual" != "$EXPECTED_VERSION" ]; then
     echo "check-format: нужен clang-format $EXPECTED_VERSION, а стоит ${actual:-никакой}."
     echo "  Разные версии форматируют по-разному, и то, что пройдёт тут, упадёт в CI."
-    echo "  macOS: brew install pipx && pipx install clang-format==$EXPECTED_VERSION"
-    echo "  Linux: pip install --user clang-format==$EXPECTED_VERSION"
+    echo "  macOS: brew install uv && uv tool install --python 3.12 clang-format==$EXPECTED_VERSION"
+    echo "  Linux: uv tool install clang-format==$EXPECTED_VERSION"
     exit 1
 fi
 
