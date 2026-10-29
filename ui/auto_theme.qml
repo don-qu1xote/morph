@@ -104,6 +104,7 @@ ApplicationWindow {
     FontLoader { id: mainFont; source: "qrc:/assets/fonts/interblack.otf" }
 
     property var currentTrack: null
+    property var currentFallback: ({})
     property int currentTrackIndex: -1
     property string currentView: "home"
     property string editingFileName: ""
@@ -381,6 +382,7 @@ ApplicationWindow {
             durationMs: track.durationMs || 0
         }
         currentTrack = cleanTrack
+        currentFallback = MorphServices.fallbackSource(cleanTrack)
         currentTrackIndex = index
         
         recoveredTrackId = ""
@@ -2714,6 +2716,34 @@ ApplicationWindow {
                                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                                         spacing: (window.width - sidebarRect.width) > 500 ? 12 : 8
                                         
+                                        // трек убран из Яндекса и играет с замены: откуда она и какая по счёту
+                                        Rectangle {
+                                            id: fallbackBadge
+                                            property bool shouldShow: currentFallback.service !== undefined && (window.width - sidebarRect.width) > 640
+                                            opacity: shouldShow ? 1 : 0
+                                            visible: opacity > 0
+                                            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                                            Layout.preferredWidth: shouldShow ? (fallbackText.width + 10) : 0
+                                            Behavior on Layout.preferredWidth { NumberAnimation { duration: 150 } }
+
+                                            height: 16; radius: 4; color: systemTheme.card; clip: true
+                                            Text {
+                                                id: fallbackText; anchors.centerIn: parent
+                                                text: fallbackArea.containsMouse ? "OTHER VERSION" : (currentFallback.service === "SoundCloud" ? "SOUNDCLOUD" : "YOUTUBE") + (currentFallback.total > 1 ? " " + currentFallback.index + "/" + currentFallback.total : "")
+                                                color: currentFallback.service === "SoundCloud" ? "#ff7a1a" : "#ff4e45"
+                                                font.family: mainFont.name; font.pixelSize: 9; font.weight: Font.Bold
+                                            }
+                                            MouseArea {
+                                                id: fallbackArea
+                                                anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    MorphServices.otherVersion(currentTrack)
+                                                    showToast("Looking for another version")
+                                                }
+                                            }
+                                        }
+
                                         Rectangle {
                                             id: bitrateRect
                                             property bool shouldShow: MorphAudio.bitrate > 0 && (window.width - sidebarRect.width) > 700
@@ -3077,6 +3107,9 @@ ApplicationWindow {
                 if (item.webUrl === undefined) item.webUrl = ""
                 chartsModel.append(item)
             }
+        }
+        function onFallbackChosen(trackId, source) {
+            if (currentTrack && currentTrack.id === trackId) currentFallback = source
         }
         function onWaveReady(serviceName, results) {
             saveLastImport = false
