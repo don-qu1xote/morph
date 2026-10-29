@@ -533,8 +533,80 @@ void YandexService::sendWaveFeedback(const QString& type, const QString& trackId
     net->post(url, QJsonDocument(body).toJson(QJsonDocument::Compact), headers, [](QNetworkReply*) {}, false);
 }
 
+// обложка плейлиста: своя картинка, мозаика из обложек треков или превью для соцсетей
+static QString playlistCover(const QJsonObject& playlist) {
+    QJsonObject cover = playlist["cover"].toObject();
+    QString image = cover["uri"].toString();
+    if (image.isEmpty()) image = cover["itemsUri"].toArray().first().toString();
+    if (image.isEmpty()) image = playlist["ogImage"].toString();
+    image.replace("%%", "400x400");
+    if (!image.isEmpty() && !image.startsWith("http")) image = "https://" + image;
+    return image;
+}
+
+// Карточка для главной. Ссылка ведёт на /users/<uid>/playlists/<kind>,
+// по клику её открывает тот же importPlaylist
+static QVariantMap playlistCard(const QJsonObject& playlist) {
+    QString uid = playlist["uid"].toVariant().toString();
+    if (uid.isEmpty()) uid = playlist["owner"].toObject()["uid"].toVariant().toString();
+    QString kind = playlist["kind"].toVariant().toString();
+    return {{"id", uid + ":" + kind},
+            {"name", playlist["title"].toString()},
+            {"coverUrl", playlistCover(playlist)},
+            {"service", "Yandex"},
+            {"permalink_url", QString("https://music.yandex.ru/users/%1/playlists/%2").arg(uid, kind)}};
+}
+
+// Плейлист дня, Премьера, Дежавю и Тайник, за ними свежие подборки редакции.
+// Отвечают по отдельности, на главную уходят разом и в этом порядке
 void YandexService::getDailyMixes() {
-    emit dailyMixesReady("Yandex", QVariantList());
+    if (m_token.isEmpty()) {
+        emit dailyMixesReady("Yandex", QVariantList());
+        return;
+    }
+
+    static const QStringList personal = {"daily", "recentTracks", "neverHeard", "missedLikes"};
+    auto cards = std::make_shared<QList<QVariantMap>>(personal.size());
+    auto editorial = std::make_shared<QVariantList>();
+    auto pending = std::make_shared<int>(personal.size() + 1);
+    auto finish = [this, cards, editorial, pending]() {
+        if (--*pending > 0) return;
+        QVariantList mixes;
+        for (const QVariantMap& card : std::as_const(*cards)) {
+            if (!card.isEmpty()) mixes.append(card);
+        }
+        emit dailyMixesReady("Yandex", mixes + *editorial);
+    };
+
+    for (int i = 0; i < personal.size(); ++i) {
+        net->get(
+            QUrl(m_api + "/playlists/personal/" + personal[i]), yandexHeaders(m_token),
+            [cards, i, finish](QNetworkReply* reply) {
+                QJsonObject generated = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+                QJsonObject playlist = generated["data"].toObject();
+                // плейлист ещё собирается (у новых аккаунтов) или его нет вовсе
+                if (generated["ready"].toBool(true) && playlist.contains("kind")) (*cards)[i] = playlistCard(playlist);
+                finish();
+            },
+            false);
+    }
+
+    QUrl url(m_api + "/landing3");
+    url.setQuery("blocks=new-playlists");
+    net->get(
+        url, yandexHeaders(m_token),
+        [editorial, finish](QNetworkReply* reply) {
+            QJsonArray blocks =
+                QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["blocks"].toArray();
+            for (const auto& block : blocks) {
+                for (const auto& entity : block.toObject()["entities"].toArray()) {
+                    QJsonObject playlist = entity.toObject()["data"].toObject();
+                    if (playlist.contains("kind")) editorial->append(playlistCard(playlist));
+                }
+            }
+            finish();
+        },
+        false);
 }
 
 void YandexService::importPlaylist(const QString& url) {
@@ -557,10 +629,7 @@ void YandexService::importPlaylist(const QString& url) {
             }
             QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
             QString name = result["title"].toString();
-            QString coverUrl = "";
-            if (result.contains("cover")) coverUrl = "https://" + result["cover"].toObject()["uri"].toString().replace("%%", "400x400");
-            else if (result.contains("ogImage")) coverUrl = "https://" + result["ogImage"].toString().replace("%%", "400x400");
-            emit playlistImported(name, coverUrl, parseYandexTracks(result["tracks"].toArray()));
+            emit playlistImported(name, playlistCover(result), parseYandexTracks(result["tracks"].toArray()));
         });
     } else if (sharedMatch.hasMatch()) {
         QString uuid = sharedMatch.captured(1);
@@ -582,10 +651,7 @@ void YandexService::importPlaylist(const QString& url) {
                 return;
             }
             QString name = result["title"].toString();
-            QString coverUrl = "";
-            if (result.contains("cover")) coverUrl = "https://" + result["cover"].toObject()["uri"].toString().replace("%%", "400x400");
-            else if (result.contains("ogImage")) coverUrl = "https://" + result["ogImage"].toString().replace("%%", "400x400");
-            emit playlistImported(name, coverUrl, parseYandexTracks(result["tracks"].toArray()));
+            emit playlistImported(name, playlistCover(result), parseYandexTracks(result["tracks"].toArray()));
         });
     } else {
         emit errorOccurred("Invalid Yandex Music playlist URL");

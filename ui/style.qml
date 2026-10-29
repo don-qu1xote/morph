@@ -1266,7 +1266,7 @@ function playTrack(track, index) {
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 20
                                         visible: dailyMixesModel.count > 0
-                                        Text { text: "DAILY MIXES"; color: "white"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        Text { text: "FOR YOU"; color: "white"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
                                         Rectangle {
                                             Layout.fillWidth: true; Layout.preferredHeight: 160; color: "#1a1a1a"; radius: 12; border.color: "#333"; border.width: 1; clip: true
                                             Item {
@@ -3757,9 +3757,14 @@ function playTrack(track, index) {
             }
         }
         function onDailyMixesReady(serviceName, results) {
-            if (results.length > 0) dailyMixesModel.clear()
+            // миксы приходят от каждого сервиса отдельно: меняем только его карточки,
+            // яндексовские впереди
+            for (var j = dailyMixesModel.count - 1; j >= 0; j--) {
+                if (dailyMixesModel.get(j).service === serviceName) dailyMixesModel.remove(j)
+            }
             for (var i = 0; i < results.length; i++) {
-                dailyMixesModel.append(results[i])
+                if (serviceName === "Yandex") dailyMixesModel.insert(i, results[i])
+                else dailyMixesModel.append(results[i])
             }
         }
     function onStreamUrlReady(trackId, streamUrl) {

@@ -533,6 +533,49 @@ private slots:
         QCOMPARE(diversity["key"].toString(), QString("diversity"));
         QCOMPARE(diversity["values"].toList().first().toMap()["seed"].toString(), QString("settingDiversity:discover"));
     }
+
+    void personalAndEditorialPlaylistsForTheHomeScreen() {
+        auto personal = [](int kind, const QString& title, const QJsonObject& cover, bool ready = true) {
+            QJsonObject playlist{{"uid", 5}, {"kind", kind}, {"title", title}, {"cover", cover}};
+            return jsonResult(QJsonObject{{"ready", ready}, {"data", playlist}});
+        };
+        api.on("GET", "/playlists/personal/daily", [=](const HttpRequest&) {
+            return personal(100, "Плейлист дня", QJsonObject{{"uri", "avatars.example/day/%%"}});
+        });
+        api.on("GET", "/playlists/personal/recentTracks",
+               [=](const HttpRequest&) { return personal(101, "Премьера", {}, false); });
+        api.on("GET", "/playlists/personal/missedLikes", [=](const HttpRequest&) {
+            return personal(103, "Тайник", QJsonObject{{"itemsUri", QJsonArray{"avatars.example/m1/%%"}}});
+        });
+        api.on("GET", "/landing3", [](const HttpRequest&) {
+            QJsonObject editorial{{"owner", QJsonObject{{"uid", 9}}},
+                                  {"kind", 7},
+                                  {"title", "Рэп-новинки"},
+                                  {"ogImage", "avatars.example/og/%%"}};
+            QJsonObject block{{"type", "new-playlists"},
+                              {"entities", QJsonArray{QJsonObject{{"type", "playlist"}, {"data", editorial}}}}};
+            return jsonResult(QJsonObject{{"blocks", QJsonArray{block}}});
+        });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy mixes(&yandex, &BaseService::dailyMixesReady);
+
+        yandex.getDailyMixes();
+        QVERIFY(mixes.wait());
+
+        QVariantList cards = mixes[0][1].toList();
+        QCOMPARE(cards.size(), 3);
+        QVariantMap day = cards[0].toMap();
+        QCOMPARE(day["name"].toString(), QString("Плейлист дня"));
+        QCOMPARE(day["coverUrl"].toString(), QString("https://avatars.example/day/400x400"));
+        QCOMPARE(day["permalink_url"].toString(), QString("https://music.yandex.ru/users/5/playlists/100"));
+        QCOMPARE(cards[1].toMap()["coverUrl"].toString(), QString("https://avatars.example/m1/400x400"));
+        QVariantMap editorial = cards[2].toMap();
+        QCOMPARE(editorial["id"].toString(), QString("9:7"));
+        QCOMPARE(editorial["coverUrl"].toString(), QString("https://avatars.example/og/400x400"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestYandexService)

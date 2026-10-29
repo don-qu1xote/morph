@@ -28,7 +28,7 @@
 - **Fast YouTube Start**: The next track is found and downloaded while the current one plays, and yt-dlp asks YouTube with a single lightweight client, so tracks from YouTube start almost as fast as Yandex ones.
 - **Text List Import**: Paste a path to a `.txt` file with `Artist - Title` lines into the import field to get a playlist played through search.
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
-- **Daily Mixes**: Access personalized daily playlists from SoundCloud directly on the home screen.
+- **For You**: Yandex personal playlists (Playlist of the Day, Premiere, Deja Vu, Stash) and fresh editorial picks on the home screen, next to SoundCloud daily mixes.
 - **Artist Profiles**: Browse detailed artist profiles displaying a biography, high-resolution avatar, list of albums, and tracks directly from the player.
 - **Advanced Playlist Management**:
   - Create, rename, and delete custom playlists.
