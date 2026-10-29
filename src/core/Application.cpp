@@ -40,6 +40,7 @@ Application::Application(QObject *parent) : QObject(parent) {
     settings = new SettingsManager(cache, this);
     audio = new AudioEngine(this);
     services = new ServiceManager(net, cache, this);
+    listens = new ListenTracker(this);
     mpris = new MprisManager(audio, this);
     discord = new DiscordManager(audio, settings, this);
     watcher = new FileWatcher(settings->getActiveStylePath(), this);
@@ -59,6 +60,12 @@ Application::Application(QObject *parent) : QObject(parent) {
     });
     services->setYandexQuality(settings->getYandexQuality());
     services->setSoundCloudQuality(settings->getSoundCloudQuality());
+
+    connect(audio, &AudioEngine::stateChanged, listens, [this]() { listens->playbackChanged(audio->isPlaying()); });
+    connect(audio, &AudioEngine::durationChanged, listens, [this]() { listens->durationChanged(audio->duration()); });
+    connect(audio, &AudioEngine::finished, listens, &ListenTracker::trackEnded);
+    connect(services, &ServiceManager::trackStarted, listens, &ListenTracker::trackStarted);
+    connect(listens, &ListenTracker::listenFinished, services, &ServiceManager::reportListen);
 
     QTimer* gcTimer = new QTimer(this);
     connect(gcTimer, &QTimer::timeout, this, [this]() {

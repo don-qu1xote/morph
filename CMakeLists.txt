@@ -59,6 +59,7 @@ add_library(morph_core STATIC
     src/services/YouTubeService.h src/services/YouTubeService.cpp
     src/audio/AudioEngine.h src/audio/AudioEngine.cpp
     src/core/ServiceManager.h src/core/ServiceManager.cpp
+    src/core/ListenTracker.h src/core/ListenTracker.cpp
     src/settings/SettingsManager.h src/settings/SettingsManager.cpp
     src/settings/PlaylistManager.h src/settings/PlaylistManager.cpp
     src/settings/TokenManager.h src/settings/TokenManager.cpp

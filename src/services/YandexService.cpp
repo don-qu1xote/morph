@@ -59,6 +59,7 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
         QJsonArray albums = trackObj["albums"].toArray();
         if (!albums.isEmpty()) {
             QString albumId = QString::number(albums[0].toObject()["id"].toInt());
+            m_albumIds[track.id] = albumId;
             track.album = albums[0].toObject()["title"].toString();
             if (track.album.isEmpty()) track.album = albumId;
             QString coverUri = albums[0].toObject()["coverUri"].toString();
@@ -71,6 +72,7 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
             track.webUrl = "https://music.yandex.ru/track/" + track.id;
         }
         track.service = "Yandex";
+        m_durations[track.id] = track.durationMs;
         tracksList.append(track.toVariantMap());
     }
     return tracksList;
@@ -231,10 +233,19 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
 #include <QDateTime>
 
 void YandexService::reportPlay(const QString& trackId, const QString& albumId) {
+    // Раньше тут в момент старта уходил play-audio с длиной 180 и нулём прослушанных
+    // секунд, а вместо id альбома его название. Теперь статистика уходит в
+    // reportListen, когда понятно, сколько трек на самом деле слушали
+    Q_UNUSED(trackId);
+    Q_UNUSED(albumId);
+}
+
+void YandexService::reportListen(const QString& trackId, double playedSeconds, double lengthSeconds, bool completed) {
     if (m_token.isEmpty()) return;
 
-    QUrl url(m_api + "/play-audio");
-    QString timestamp = QDateTime::currentDateTimeUtc().toString("yyyy-MM-ddTHH:mm:ss.zzzZ");
+    if (lengthSeconds <= 0) lengthSeconds = m_durations.value(trackId) / 1000.0;
+    QString timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    QString albumId = m_albumIds.value(trackId);
 
     QUrlQuery q;
     q.addQueryItem("track-id", trackId);
@@ -243,17 +254,14 @@ void YandexService::reportPlay(const QString& trackId, const QString& albumId) {
     q.addQueryItem("play-id", QString::number(QDateTime::currentMSecsSinceEpoch()) + "-morph");
     q.addQueryItem("timestamp", timestamp);
     q.addQueryItem("client-now", timestamp);
-    q.addQueryItem("track-length-seconds", "180");
-    q.addQueryItem("total-played-seconds", "0");
-    q.addQueryItem("end-position-seconds", "0");
+    q.addQueryItem("track-length-seconds", QString::number(lengthSeconds, 'f', 1));
+    q.addQueryItem("total-played-seconds", QString::number(playedSeconds, 'f', 1));
+    q.addQueryItem("end-position-seconds", QString::number(completed ? lengthSeconds : playedSeconds, 'f', 1));
 
     QMap<QString, QByteArray> headers = yandexHeaders(m_token);
     headers["Content-Type"] = "application/x-www-form-urlencoded";
-    net->post(url, q.toString(QUrl::FullyEncoded).toUtf8(), headers, [](QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) {
-        } else {
-        }
-    });
+    net->post(
+        QUrl(m_api + "/play-audio"), q.toString(QUrl::FullyEncoded).toUtf8(), headers, [](QNetworkReply*) {}, false);
 }
 
 void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate) {

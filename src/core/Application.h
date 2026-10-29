@@ -10,6 +10,7 @@
 #include "network/NetworkManager.h"
 #include "audio/AudioEngine.h"
 #include "ServiceManager.h"
+#include "ListenTracker.h"
 #include "settings/SettingsManager.h"
 #include "MprisManager.h"
 #include "utils/DiscordManager.h"
@@ -41,6 +42,7 @@ private:
     CacheManager* cache;
     AudioEngine* audio;
     ServiceManager* services;
+    ListenTracker* listens;
     SettingsManager* settings;
     MprisManager* mpris;
     DiscordManager* discord;

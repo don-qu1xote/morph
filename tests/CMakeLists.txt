@@ -12,3 +12,5 @@ endfunction()
 
 morph_add_test(tst_playlist_manager tst_playlist_manager.cpp)
 morph_add_test(tst_service_manager tst_service_manager.cpp support/FakeHttpServer.h support/FakeTools.h)
+morph_add_test(tst_listen_tracker tst_listen_tracker.cpp)
+morph_add_test(tst_yandex_service tst_yandex_service.cpp support/FakeHttpServer.h)

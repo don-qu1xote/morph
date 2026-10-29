@@ -22,6 +22,8 @@ public slots:
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId);
+    void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
+                      double lengthSeconds, bool completed);
     void importPlaylist(const QString& url);
     void setYandexToken(const QString& token);
     void setSoundCloudClientId(const QString& clientId);
@@ -38,6 +40,7 @@ signals:
     void playlistImported(const QString& name, const QString& coverUrl, const QVariantList& tracks);
     void errorOccurred(const QString& message);
     void bitrateReady(const QString& trackId, int bitrate);
+    void trackStarted(const QString& serviceName, const QString& trackId, const QString& albumId);
 
 private:
     void attach(BaseService* service);

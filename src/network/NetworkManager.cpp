@@ -10,14 +10,15 @@ static void applyHeaders(QNetworkRequest& request, const QMap<QString, QByteArra
     }
 }
 
-void NetworkManager::get(const QUrl& url, const QMap<QString, QByteArray>& headers, std::function<void(QNetworkReply*)> callback) {
+void NetworkManager::get(const QUrl& url, const QMap<QString, QByteArray>& headers,
+                         std::function<void(QNetworkReply*)> callback, bool showErrors) {
     QNetworkRequest request(url);
     request.setTransferTimeout(10000);
     applyHeaders(request, headers);
 
     QNetworkReply* reply = manager->get(request);
-    connect(reply, &QNetworkReply::finished, [this, reply, callback, url]() {
-        if (reply->error() != QNetworkReply::NoError) {
+    connect(reply, &QNetworkReply::finished, [this, reply, callback, url, showErrors]() {
+        if (showErrors && reply->error() != QNetworkReply::NoError) {
             emit errorOccurred(QString("Network Error: %1 (%2)").arg(reply->errorString(), url.toString()));
         }
         callback(reply);
@@ -40,14 +41,15 @@ void NetworkManager::rawGet(const QUrl& url, const QMap<QString, QByteArray>& he
     });
 }
 
-void NetworkManager::post(const QUrl& url, const QByteArray& data, const QMap<QString, QByteArray>& headers, std::function<void(QNetworkReply*)> callback) {
+void NetworkManager::post(const QUrl& url, const QByteArray& data, const QMap<QString, QByteArray>& headers,
+                          std::function<void(QNetworkReply*)> callback, bool showErrors) {
     QNetworkRequest request(url);
     request.setTransferTimeout(10000);
     applyHeaders(request, headers);
 
     QNetworkReply* reply = manager->post(request, data);
-    connect(reply, &QNetworkReply::finished, [this, reply, callback, url]() {
-        if (reply->error() != QNetworkReply::NoError) {
+    connect(reply, &QNetworkReply::finished, [this, reply, callback, url, showErrors]() {
+        if (showErrors && reply->error() != QNetworkReply::NoError) {
             emit errorOccurred(QString("Network Error: %1 (%2)").arg(reply->errorString(), url.toString()));
         }
         callback(reply);

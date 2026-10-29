@@ -86,7 +86,14 @@ void ServiceManager::resolve(const QString& serviceName, const QString& trackId)
 }
 
 void ServiceManager::reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId) {
+    emit trackStarted(serviceName, trackId, albumId);
     if (BaseService* s = service(serviceName)) s->reportPlay(trackId, albumId);
+}
+
+void ServiceManager::reportListen(const QString& serviceName, const QString& trackId, const QString& albumId,
+                                  double playedSeconds, double lengthSeconds, bool completed) {
+    Q_UNUSED(albumId);
+    if (serviceName == "Yandex") yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
 }
 
 void ServiceManager::importPlaylist(const QString& url) {
