@@ -5,6 +5,7 @@
     <file>ui/auto_theme.qml</file>
     <file>ui/components/StationsRow.qml</file>
     <file>ui/components/WaveSettingsPopup.qml</file>
+    <file>ui/components/SidePanel.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
     <file>assets/cog.svg</file>
@@ -14,6 +15,7 @@
     <file>assets/heart.svg</file>
     <file>assets/dislike.svg</file>
     <file>assets/shuffle-variant.svg</file>
+    <file>assets/playlist-music.svg</file>
     <file>assets/magnify.svg</file>
     <file>assets/pause-circle.svg</file>
     <file>assets/pause.svg</file>

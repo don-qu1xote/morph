@@ -11,6 +11,7 @@
 #include "audio/AudioEngine.h"
 #include "ServiceManager.h"
 #include "ListenTracker.h"
+#include "PlaybackQueue.h"
 #include "settings/SettingsManager.h"
 #include "MprisManager.h"
 #include "utils/DiscordManager.h"
@@ -43,6 +44,7 @@ private:
     AudioEngine* audio;
     ServiceManager* services;
     ListenTracker* listens;
+    PlaybackQueue* queue;
     SettingsManager* settings;
     MprisManager* mpris;
     DiscordManager* discord;

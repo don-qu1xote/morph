@@ -19,3 +19,4 @@ morph_add_test(tst_soundcloud_service tst_soundcloud_service.cpp support/FakeHtt
 morph_add_test(tst_wave_mixer tst_wave_mixer.cpp support/FakeHttpServer.h support/FakeTools.h)
 morph_add_test(tst_youtube_service tst_youtube_service.cpp support/FakeTools.h)
 morph_add_test(tst_track_match tst_track_match.cpp)
+morph_add_test(tst_playback_queue tst_playback_queue.cpp)

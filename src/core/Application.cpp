@@ -41,6 +41,7 @@ Application::Application(QObject *parent) : QObject(parent) {
     audio = new AudioEngine(this);
     services = new ServiceManager(net, cache, this);
     listens = new ListenTracker(this);
+    queue = new PlaybackQueue(this);
     mpris = new MprisManager(audio, this);
     discord = new DiscordManager(audio, settings, this);
     watcher = new FileWatcher(settings->getActiveStylePath(), this);
@@ -94,6 +95,7 @@ Application::Application(QObject *parent) : QObject(parent) {
 void Application::bindContextProperties() {
     engine->rootContext()->setContextProperty("MorphAudio", audio);
     engine->rootContext()->setContextProperty("MorphServices", services);
+    engine->rootContext()->setContextProperty("MorphQueue", queue);
     engine->rootContext()->setContextProperty("MorphSettings", settings);
     engine->rootContext()->setContextProperty("MorphMpris", mpris);
     engine->rootContext()->setContextProperty("MorphDiscord", discord);

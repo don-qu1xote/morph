@@ -592,8 +592,28 @@ function playTrack(track, index) {
         }
     }
 
+    function playingModel() {
+        return currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
+    }
+
     function playNext() {
-        var model = currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
+        // сначала то, что поставили в очередь руками, потом список с того же места
+        if (MorphQueue.count > 0) {
+            playTrack(MorphQueue.takeNext(), currentTrackIndex)
+            return
+        }
+        var model = playingModel()
+        // список подгружается кусками по 100: дальше конца куска играть тоже надо
+        if (model === libraryModel && currentTrackIndex + 1 >= model.count) loadNextChunk()
+        if (MorphQueue.shuffle && currentPlaylist !== "MY_VIBE") {
+            var total = model === libraryModel ? fullPlaylistTracks.length : model.count
+            var next = MorphQueue.nextIndex(currentTrackIndex, total)
+            if (next >= 0) {
+                while (model === libraryModel && next >= model.count && loadedTracksCount < fullPlaylistTracks.length) loadNextChunk()
+                playTrack(model.get(next), next)
+                return
+            }
+        }
         if (currentTrackIndex + 1 < model.count) {
             playTrack(model.get(currentTrackIndex + 1), currentTrackIndex + 1)
         } else if (currentPlaylist === "MY_VIBE") {
@@ -603,10 +623,23 @@ function playTrack(track, index) {
 
     function playPrevious() {
         if (MorphAudio.position > 3000) MorphAudio.position = 0
-        else if (currentTrackIndex - 1 >= 0) {
-            var model = currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
+        else if (MorphQueue.shuffle && currentPlaylist !== "MY_VIBE") {
+            var back = MorphQueue.previousIndex(currentTrackIndex)
+            if (back >= 0) playTrack(playingModel().get(back), back)
+        } else if (currentTrackIndex - 1 >= 0) {
+            var model = playingModel()
             playTrack(model.get(currentTrackIndex - 1), currentTrackIndex - 1)
         }
+    }
+
+    // что заиграет дальше из текущего списка, для панели очереди
+    function upcomingTracks(limit) {
+        var result = []
+        // при перемешивании порядок заранее не известен
+        if (MorphQueue.shuffle && currentPlaylist !== "MY_VIBE") return result
+        var model = playingModel()
+        for (var i = currentTrackIndex + 1; i < model.count && result.length < limit; i++) result.push(model.get(i))
+        return result
     }
 
     ListModel { id: searchModel; dynamicRoles: true }
@@ -2984,6 +3017,11 @@ function playTrack(track, index) {
                                         spacing: (window.width - sidebarRect.width) > 420 ? 25 : 10
                                         Behavior on spacing { NumberAnimation { duration: 150 } }
                                         Image {
+                                            source: "qrc:/assets/shuffle-variant.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; sourceSize: Qt.size(64, 64)
+                                            layer.enabled: true; layer.effect: ColorOverlay { color: MorphQueue.shuffle ? "#b57339" : "white" }
+                                            MouseArea { anchors.fill: parent; onClicked: (mouse) => MorphQueue.shuffle = !MorphQueue.shuffle; cursorShape: Qt.PointingHandCursor }
+                                        }
+                                        Image {
                                             source: repeatOne ? "qrc:/assets/repeat-once.svg" : "qrc:/assets/repeat.svg"; Layout.preferredWidth: 22; Layout.preferredHeight: 22; sourceSize: Qt.size(64, 64); layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
                                             MouseArea { anchors.fill: parent; onClicked: (mouse) => repeatOne = !repeatOne; cursorShape: Qt.PointingHandCursor }
                                         }
@@ -3062,6 +3100,13 @@ function playTrack(track, index) {
                                         anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                                         spacing: (window.width - sidebarRect.width) > 500 ? 12 : 8
                                         
+                                        Image {
+                                            Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                                            source: "qrc:/assets/playlist-music.svg"; sourceSize: Qt.size(64, 64)
+                                            layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened ? "#b57339" : "white" }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: (mouse) => sidePanel.opened ? sidePanel.close() : sidePanel.open() }
+                                        }
+
                                         // трек убран из Яндекса и играет с замены: откуда она и какая по счёту
                                         Rectangle {
                                             id: fallbackBadge
@@ -3387,7 +3432,7 @@ function playTrack(track, index) {
         property bool openedUpwards: false
         parent: Overlay.overlay
         width: 170; height: {
-            var count = 5
+            var count = 7
             if (openedUpwards) count++
             if (currentView === "library" && currentPlaylist !== "" && saveLastImport) count++
             return (count * 40) + 10
@@ -3436,6 +3481,34 @@ function playTrack(track, index) {
                                 MorphServices.resolve(targetContextTrack.service || "Yandex", tid)
                                 showToast("Downloading track...")
                             }
+                        }
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: playNextMouse.containsMouse ? "#333" : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "PLAY NEXT"; color: "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: playNextMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) {
+                            MorphQueue.playNext(targetContextTrack)
+                            showToast("Plays next")
+                        }
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: addQueueMouse.containsMouse ? "#333" : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "ADD TO QUEUE"; color: "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: addQueueMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) {
+                            MorphQueue.add(targetContextTrack)
+                            showToast("Added to queue")
                         }
                         trackContextMenu.close()
                     }
@@ -3925,6 +3998,27 @@ function playTrack(track, index) {
             isRecovering = true
             lastKnownPosition = MorphAudio.position
             MorphServices.resolve(currentTrack.service, currentTrack.id)
+        }
+    }
+
+    SidePanel {
+        id: sidePanel
+        parent: Overlay.overlay
+        x: parent.width - width - 12; y: 12
+        height: parent.height - 120
+        currentTrack: window.currentTrack
+        queued: MorphQueue.tracks
+        upcoming: (currentTrackIndex, libraryModel.count, MorphQueue.shuffle, upcomingTracks(30))
+        contextName: currentPlaylist === "MY_VIBE" ? "WAVE" : (currentPlaylist || "LIST").replace(/_/g, " ")
+        backgroundColor: "#141414"; textColor: "white"; subtextColor: "#888888"
+        hoverColor: "#222222"; borderColor: "#333333"; accentColor: "#b57339"
+        fontFamily: mainFont.name
+        onPlayQueued: (index) => playTrack(MorphQueue.takeUpTo(index), currentTrackIndex)
+        onRemoveQueued: (index) => MorphQueue.remove(index)
+        onClearQueue: MorphQueue.clear()
+        onPlayUpcoming: (offset) => {
+            var index = currentTrackIndex + 1 + offset
+            playTrack(playingModel().get(index), index)
         }
     }
 

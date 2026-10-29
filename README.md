@@ -34,6 +34,7 @@
   - Create, rename, and delete custom playlists.
   - Set custom cover images using external URLs (Imgur, Pinterest, etc.).
   - Easily add tracks from search, charts, or history directly into your playlists.
+- **Queue & Shuffle**: Play next, add to queue and a side panel with what plays now, your queue and the rest of the list; shuffle plays every track once per round, and Previous walks back through what actually played.
 - **Search History**: Automatically keeps track of your 20 most recently played tracks from searches for quick access.
 - **Persistent Caching & Offline Support**: Automatically saves played tracks and viewed covers to local storage, enabling full playback without an internet connection.
 - **Advanced Cache Management**: Dedicated storage view with real-time size calculation and granular clearing options for tracks and covers.
