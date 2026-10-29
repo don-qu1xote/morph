@@ -38,7 +38,10 @@ jobs:
 
   macos:
     name: "macOS: сборка, тесты, dmg"
-    runs-on: macos-14
+    # macos-14 GitHub снимает 2 ноября 2026, раннеров под него уже не хватает
+    runs-on: macos-15
+    # минуты на маке в 10 раз дороже, зависший тест не должен жечь их часами
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
