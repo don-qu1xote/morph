@@ -1,0 +1,20 @@
+# Подогнан под то, как уже написан upstream: 4 пробела, указатель у типа,
+# короткие if и функции в одну строку. Применяется только к изменённым
+# строкам, почему так, в docs/adr/0001.
+BasedOnStyle: LLVM
+Standard: c++20
+IndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+PointerAlignment: Left
+DerivePointerAlignment: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+AllowShortBlocksOnASingleLine: Empty
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+SortIncludes: Never
+IncludeBlocks: Preserve
+ObjCBlockIndentWidth: 4

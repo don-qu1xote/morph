@@ -1,0 +1,26 @@
+#!/bin/bash
+# Подпись коммита и формат изменённых строк. Включается один раз: make hooks
+set -u
+
+name=$(git config user.name || true)
+email=$(git config user.email || true)
+
+if [ -z "$name" ] || [ -z "$email" ]; then
+    echo "pre-commit: не задано авторство коммитов:"
+    echo "  git config user.name \"Имя\" && git config user.email \"почта\""
+    exit 1
+fi
+
+# заготовка из git config уезжает в историю молча, а убрать её потом
+# можно только переписав историю
+case "$name/$email" in
+    "Your Name/"* | */"you@example.com")
+        echo "pre-commit: авторство осталось заготовкой: $name <$email>"
+        exit 1
+        ;;
+esac
+
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.cpp' '*.h' '*.mm')
+[ -z "$staged" ] && exit 0
+
+exec "$(git rev-parse --show-toplevel)/scripts/check-format.sh" --staged

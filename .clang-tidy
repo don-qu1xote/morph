@@ -1,0 +1,17 @@
+# Гоняется по файлам, изменённым относительно upstream (scripts/tidy-changed.sh).
+# Набор узкий: то, что ловит настоящие баги, а не вкусовщину.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  performance-*,
+  -performance-unnecessary-value-param,
+  -performance-enum-size,
+  modernize-use-override,
+  modernize-use-nullptr,
+  readability-container-size-empty,
+  misc-redundant-expression
+WarningsAsErrors: '*'
+HeaderFilterRegex: '/src/'
