@@ -67,6 +67,7 @@ make docker-ci      # формат, сборка, тесты и tidy, как в 
 |---|---|
 | `MORPH_YANDEX_API` | `https://api.music.yandex.net` |
 | `MORPH_SOUNDCLOUD_API` | `https://api-v2.soundcloud.com` |
+| `MORPH_LRCLIB_API` | `https://lrclib.net/api` |
 
 yt-dlp подменяется shell-скриптом через `FakeTools`, так тесты не зависят от
 сети и от того, что установлено на машине.

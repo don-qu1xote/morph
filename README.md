@@ -141,7 +141,7 @@ To unlock full functionality, you need to provide your authentication tokens in 
 ### SoundCloud
 The "SoundCloud Client ID" field accepts any of these:
 
-- **client_id** (enough for search, playback and the removed tracks fallback). Open [soundcloud.com](https://soundcloud.com), press **F12**, go to **Network**, filter by `api-v2` and copy the `client_id=` value from any request. It is the same for everyone and changes every few months.
+- **client_id** (enough for search, playback, the mixed wave and the removed tracks fallback, which asks SoundCloud first because it answers fast and without a VPN). Open [soundcloud.com](https://soundcloud.com), press **F12**, go to **Network**, filter by `api-v2` and copy the `client_id=` value from any request. It is the same for everyone and changes every few months.
 - **Current access token** (`eyJ...`). In the same request open **Headers** and copy the `Authorization` value, with or without the `OAuth ` prefix. It lives for 24 hours: morph uses it for personalized features like **Daily Mixes** while it is valid and keeps working on the `client_id` taken from inside it afterwards.
 - **Legacy `oauth_token` cookie** (`2-...`), if your account still has one.
 
