@@ -127,18 +127,16 @@ cmake --build build --config Release
 To unlock full functionality, you need to provide your authentication tokens in the **Settings** tab. Changes are saved automatically.
 
 ### Yandex Music Token
-1. Use a browser extension like **yandex-music-token** (available for Chrome/Firefox).
+1. Use a browser extension like **yandex-music-token** (available for Chrome/Firefox), or open `https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d` and take `access_token` from the address you get redirected to.
 2. Log in to your Yandex account.
-3. Copy the generated token and paste it into the "Yandex Music Token" field in morph's settings.
+3. Copy the token and paste it into the "Yandex Music Token" field in morph's settings. The token is valid for about a year.
 
-### SoundCloud OAuth Token
-1. Log in to your account at [soundcloud.com](https://soundcloud.com).
-2. Open Developer Tools (**F12**) and go to the **Application** tab (Chrome/Edge) or **Storage** tab (Firefox).
-3. In the sidebar, expand **Cookies** and select `https://soundcloud.com`.
-4. Find the cookie named `oauth_token` and copy its value (it starts with `2-`).
-5. Paste this token into the "SoundCloud Client ID" field in morph's settings.
+### SoundCloud
+The "SoundCloud Client ID" field accepts any of these:
 
-*Note: Using a personal OAuth token is required for personalized features like **Daily Mixes**.*
+- **client_id** (enough for search, playback and the removed tracks fallback). Open [soundcloud.com](https://soundcloud.com), press **F12**, go to **Network**, filter by `api-v2` and copy the `client_id=` value from any request. It is the same for everyone and changes every few months.
+- **Current access token** (`eyJ...`). In the same request open **Headers** and copy the `Authorization` value, with or without the `OAuth ` prefix. It lives for 24 hours: morph uses it for personalized features like **Daily Mixes** while it is valid and keeps working on the `client_id` taken from inside it afterwards.
+- **Legacy `oauth_token` cookie** (`2-...`), if your account still has one.
 
 ---
 

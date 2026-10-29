@@ -15,3 +15,4 @@ morph_add_test(tst_service_manager tst_service_manager.cpp support/FakeHttpServe
 morph_add_test(tst_listen_tracker tst_listen_tracker.cpp)
 morph_add_test(tst_yandex_service tst_yandex_service.cpp support/FakeHttpServer.h)
 morph_add_test(tst_fallback tst_fallback.cpp support/FakeHttpServer.h support/FakeTools.h)
+morph_add_test(tst_soundcloud_service tst_soundcloud_service.cpp support/FakeHttpServer.h)

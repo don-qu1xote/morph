@@ -4,7 +4,9 @@
 #include "BaseService.h"
 #include "../network/NetworkManager.h"
 
+#include <QDateTime>
 #include <QMap>
+#include <QUrlQuery>
 
 class SoundCloudService : public BaseService {
     Q_OBJECT
@@ -29,6 +31,8 @@ signals:
 private:
     void fetchStreamUrl(const QString& trackId, const QString& transcodingUrl, int bitrate);
     void resolveAs(const QString& soundcloudId, const QString& trackId);
+    void addClientId(QUrlQuery& query) const;
+    QMap<QString, QByteArray> authHeaders() const;
     void fetchPlaylistTracksMetadata(const QString& playlistName, const QString& coverUrl, const QStringList& trackIds);
     void fetchNextPlaylistChunk(const QString& playlistName, const QString& coverUrl, QStringList* remainingIds, QVariantList* allTracks, const QStringList& originalIds);
     QVariantList parseSoundCloudTracks(const QJsonArray& tracks);
@@ -37,6 +41,9 @@ private:
     NetworkManager* net;
     QString m_api;
     QString m_token;
+    QString m_clientId;
+    QString m_oauth;
+    QDateTime m_oauthExpires;
     QString m_quality = "128";
     QMap<QString, QString> m_trackLinks;
 };
