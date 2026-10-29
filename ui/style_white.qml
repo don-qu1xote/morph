@@ -68,6 +68,11 @@ ApplicationWindow {
     property string activeWave: "user:onyourwave"
     property bool myWaveActive: currentPlaylist === "MY_VIBE" && activeWave === "user:onyourwave"
     property var waveSettingOptions: []
+    // текст песни для боковой панели: "loading", "ready" или "missing"
+    property var lyricsLines: []
+    property bool lyricsSynced: false
+    property string lyricsSource: ""
+    property string lyricsState: ""
     property int currentTrackIndex: -1
     property string currentView: "home"
     property string editingFileName: ""
@@ -2755,9 +2760,36 @@ ApplicationWindow {
                                         
                                         Image {
                                             Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                                            source: "qrc:/assets/microphone-variant.svg"; sourceSize: Qt.size(64, 64)
+                                            layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened && sidePanel.tab === "lyrics" ? "#b57339" : "#111111" }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    if (sidePanel.opened && sidePanel.tab === "lyrics") {
+                                                        sidePanel.close()
+                                                    } else {
+                                                        sidePanel.tab = "lyrics"
+                                                        sidePanel.open()
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Image {
+                                            Layout.preferredWidth: 20; Layout.preferredHeight: 20
                                             source: "qrc:/assets/playlist-music.svg"; sourceSize: Qt.size(64, 64)
-                                            layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened ? "#b57339" : "#111111" }
-                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: (mouse) => sidePanel.opened ? sidePanel.close() : sidePanel.open() }
+                                            layer.enabled: true; layer.effect: ColorOverlay { color: sidePanel.opened && sidePanel.tab === "queue" ? "#b57339" : "#111111" }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    if (sidePanel.opened && sidePanel.tab === "queue") {
+                                                        sidePanel.close()
+                                                    } else {
+                                                        sidePanel.tab = "queue"
+                                                        sidePanel.open()
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         // трек убран из Яндекса и играет с замены: откуда она и какая по счёту
@@ -3202,6 +3234,16 @@ ApplicationWindow {
                 chartsModel.append(item)
             }
         }
+        function onLyricsReady(trackId, lines, synced, source) {
+            if (!currentTrack || currentTrack.id !== trackId) return
+            lyricsLines = lines
+            lyricsSynced = synced
+            lyricsSource = source
+            lyricsState = "ready"
+        }
+        function onLyricsMissing(trackId) {
+            if (currentTrack && currentTrack.id === trackId) lyricsState = "missing"
+        }
         function onStationsReady(stations) {
             stationsModel.clear()
             for (var i = 0; i < stations.length; i++) stationsModel.append(stations[i])
@@ -3404,6 +3446,16 @@ ApplicationWindow {
             var index = currentTrackIndex + 1 + offset
             playTrack(playingModel().get(index), index)
         }
+        lyricsLines: window.lyricsLines; lyricsSynced: window.lyricsSynced
+        lyricsSource: window.lyricsSource; lyricsState: window.lyricsState
+        position: MorphAudio.position
+        onLyricsWanted: {
+            if (!currentTrack) return
+            window.lyricsState = "loading"
+            window.lyricsLines = []
+            MorphServices.fetchLyrics(currentTrack)
+        }
+        onSeekRequested: (timeMs) => MorphAudio.position = timeMs
     }
 
     WaveSettingsPopup {

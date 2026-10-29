@@ -11,6 +11,7 @@
 #include "../services/YandexService.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
+#include "../services/LyricsService.h"
 #include "FallbackFinder.h"
 #include "WaveMixer.h"
 
@@ -28,6 +29,7 @@ public slots:
     void startArtistWave(const QString& artistName);
     void setWaveSettings(const QStringList& settingSeeds);
     void fetchWaveStations();
+    void fetchLyrics(const QVariantMap& track);
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
@@ -61,6 +63,8 @@ signals:
     void fallbackChosen(const QString& trackId, const QVariantMap& source);
     void stationsReady(const QVariantList& stations);
     void waveSettingsReady(const QVariantList& options);
+    void lyricsReady(const QString& trackId, const QVariantList& lines, bool synced, const QString& source);
+    void lyricsMissing(const QString& trackId);
 
 private:
     void attach(BaseService* service);
@@ -78,6 +82,7 @@ private:
     YouTubeService* youtube;
     WaveMixer* mixer;
     FallbackFinder* finder;
+    LyricsService* lyrics;
     // имена такие же, как поле service у трека: "Yandex", "SoundCloud", "YouTube"
     QList<QPair<QString, BaseService*>> m_services;
 };

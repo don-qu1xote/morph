@@ -20,3 +20,4 @@ morph_add_test(tst_wave_mixer tst_wave_mixer.cpp support/FakeHttpServer.h suppor
 morph_add_test(tst_youtube_service tst_youtube_service.cpp support/FakeTools.h)
 morph_add_test(tst_track_match tst_track_match.cpp)
 morph_add_test(tst_playback_queue tst_playback_queue.cpp)
+morph_add_test(tst_lyrics_service tst_lyrics_service.cpp support/FakeHttpServer.h)

@@ -3,15 +3,23 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 
-// Боковая панель «что дальше»: текущий трек, очередь, которую собрали руками,
-// и продолжение списка, который играет
+// Боковая панель с двумя вкладками. «Очередь»: текущий трек, очередь, которую
+// собрали руками, и продолжение списка, который играет. «Текст»: слова песни,
+// у синхронного текста текущая строка подсвечивается, по клику перемотка
 Popup {
     id: root
 
+    property string tab: "queue"
     property var currentTrack: null
     property var queued: []
     property var upcoming: []
     property string contextName: ""
+    // [{timeMs, text}]; lyricsState: "loading", "ready" или "missing"
+    property var lyricsLines: []
+    property bool lyricsSynced: false
+    property string lyricsSource: ""
+    property string lyricsState: ""
+    property real position: 0
     property color backgroundColor: "#141414"
     property color textColor: "white"
     property color subtextColor: "#888888"
@@ -24,6 +32,9 @@ Popup {
     signal removeQueued(int index)
     signal clearQueue
     signal playUpcoming(int offset)
+    // текст нужен: открыли вкладку или сменился трек, пока она открыта
+    signal lyricsWanted
+    signal seekRequested(real timeMs)
 
     width: 340
     padding: 16
@@ -36,6 +47,21 @@ Popup {
         border.color: root.borderColor
         border.width: 1
     }
+
+    // последняя строка, чьё время уже наступило; чуть заранее, чтобы глаз успевал
+    readonly property int activeLine: {
+        if (!lyricsSynced) return -1
+        var active = -1
+        for (var i = 0; i < lyricsLines.length; i++) {
+            if (lyricsLines[i].timeMs > position + 300) break
+            active = i
+        }
+        return active
+    }
+
+    onTabChanged: if (tab === "lyrics" && opened) lyricsWanted()
+    onOpened: if (tab === "lyrics") lyricsWanted()
+    onCurrentTrackChanged: if (tab === "lyrics" && opened) lyricsWanted()
 
     // строки списка по порядку: в какой секции, какой трек и откуда он
     readonly property var rows: {
@@ -55,17 +81,29 @@ Popup {
             Layout.fillWidth: true
             spacing: 12
 
-            Text {
-                Layout.fillWidth: true
-                text: "QUEUE"
-                color: root.textColor
-                font.family: root.fontFamily
-                font.pixelSize: 16
-                font.weight: Font.Black
+            Repeater {
+                model: [{ key: "queue", label: "QUEUE" }, { key: "lyrics", label: "LYRICS" }]
+
+                Text {
+                    required property var modelData
+                    text: modelData.label
+                    color: root.tab === modelData.key ? root.textColor : root.subtextColor
+                    font.family: root.fontFamily
+                    font.pixelSize: 16
+                    font.weight: Font.Black
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.tab = parent.modelData.key
+                    }
+                }
             }
 
+            Item { Layout.fillWidth: true }
+
             Text {
-                visible: root.queued.length > 0
+                visible: root.tab === "queue" && root.queued.length > 0
                 text: "CLEAR"
                 color: clearMouse.containsMouse ? root.textColor : root.subtextColor
                 font.family: root.fontFamily
@@ -98,7 +136,7 @@ Popup {
         }
 
         Text {
-            visible: root.rows.length === 0
+            visible: root.tab === "queue" && root.rows.length === 0
             text: "Nothing is playing yet"
             color: root.subtextColor
             font.family: root.fontFamily
@@ -107,6 +145,7 @@ Popup {
 
         ListView {
             id: list
+            visible: root.tab === "queue"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -216,6 +255,63 @@ Popup {
                     }
                 }
             }
+        }
+
+        Text {
+            visible: root.tab === "lyrics" && root.lyricsState !== "ready"
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: !root.currentTrack ? "Nothing is playing yet"
+                : root.lyricsState === "missing" ? "No lyrics for this track" : "Looking for lyrics..."
+            color: root.subtextColor
+            font.family: root.fontFamily
+            font.pixelSize: 12
+        }
+
+        ListView {
+            id: lyricsList
+            visible: root.tab === "lyrics" && root.lyricsState === "ready"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 10
+            boundsBehavior: Flickable.StopAtBounds
+            model: root.lyricsLines
+            // текущая строка держится в верхней трети, прокрутка плавная
+            currentIndex: root.activeLine
+            highlightRangeMode: root.lyricsSynced ? ListView.ApplyRange : ListView.NoHighlightRange
+            preferredHighlightBegin: height * 0.3
+            preferredHighlightEnd: height * 0.4
+            highlightMoveDuration: 300
+
+            delegate: Text {
+                required property var modelData
+                required property int index
+                width: lyricsList.width
+                wrapMode: Text.WordWrap
+                text: modelData.text.length > 0 ? modelData.text : "♪"
+                color: !root.lyricsSynced || index === root.activeLine ? root.textColor : root.subtextColor
+                opacity: !root.lyricsSynced || index >= root.activeLine ? 1 : 0.6
+                font.family: root.fontFamily
+                font.pixelSize: index === root.activeLine ? 18 : 16
+                font.weight: Font.Bold
+                Behavior on font.pixelSize { NumberAnimation { duration: 150 } }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: root.lyricsSynced
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.seekRequested(parent.modelData.timeMs)
+                }
+            }
+        }
+
+        Text {
+            visible: root.tab === "lyrics" && root.lyricsState === "ready" && root.lyricsSource.length > 0
+            text: "Lyrics: " + root.lyricsSource
+            color: root.subtextColor
+            font.family: root.fontFamily
+            font.pixelSize: 10
         }
     }
 }

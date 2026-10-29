@@ -49,6 +49,9 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         }
     });
 
+    lyrics = new LyricsService(net, this);
+    connect(lyrics, &LyricsService::lyricsReady, this, &ServiceManager::lyricsReady);
+    connect(lyrics, &LyricsService::lyricsMissing, this, &ServiceManager::lyricsMissing);
     connect(yandex, &YandexService::stationsReady, this, &ServiceManager::stationsReady);
     connect(yandex, &YandexService::waveSettingsReady, this, &ServiceManager::waveSettingsReady);
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
@@ -142,6 +145,10 @@ void ServiceManager::setWaveSettings(const QStringList& settingSeeds) {
 
 void ServiceManager::fetchWaveStations() {
     yandex->fetchWaveStations();
+}
+
+void ServiceManager::fetchLyrics(const QVariantMap& track) {
+    if (!track["id"].toString().isEmpty()) lyrics->fetch(track);
 }
 
 void ServiceManager::getDailyMixes() {
@@ -283,6 +290,7 @@ void ServiceManager::setYandexToken(const QString& token) {
     bool changed = token != m_yandexToken;
     m_yandexToken = token;
     yandex->setToken(token);
+    lyrics->setYandexToken(token);
 
     // QML зовёт это на каждом старте и перезагрузке стиля, лайки тянем только при новом токене
     if (changed && !token.isEmpty()) yandex->fetchLikes();
