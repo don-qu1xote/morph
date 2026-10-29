@@ -140,6 +140,25 @@ void YandexService::setLiked(const QString& trackId, bool liked) {
     if (m_waveBatchOf.contains(trackId)) sendWaveFeedback(liked ? "like" : "unlike", trackId);
 }
 
+// «Не нравится»: трек больше не попадёт в рекомендации, а волна получает
+// самый сильный отрицательный сигнал, сильнее любого скипа
+void YandexService::dislike(const QString& trackId) {
+    if (m_token.isEmpty()) return;
+
+    withUid([this, trackId]() {
+        QUrl url(QString("%1/users/%2/dislikes/tracks/add-multiple").arg(m_api, m_uid));
+
+        QUrlQuery body;
+        body.addQueryItem("track-ids", fullTrackId(trackId));
+
+        QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+        net->post(url, body.toString(QUrl::FullyEncoded).toUtf8(), headers, [](QNetworkReply*) {});
+    });
+
+    if (m_waveBatchOf.contains(trackId)) sendWaveFeedback("dislike", trackId);
+}
+
 void YandexService::fetchLikes() {
     if (m_token.isEmpty()) return;
 

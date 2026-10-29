@@ -26,6 +26,7 @@ public slots:
     void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
                       double lengthSeconds, bool completed);
     void setLiked(const QVariantMap& track, bool liked);
+    void dislike(const QVariantMap& track);
     void importPlaylist(const QString& url);
     void setYandexToken(const QString& token);
     void setSoundCloudClientId(const QString& clientId);

@@ -124,6 +124,10 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     if (track["service"].toString() == "Yandex") yandex->setLiked(track["id"].toString(), liked);
 }
 
+void ServiceManager::dislike(const QVariantMap& track) {
+    if (track["service"].toString() == "Yandex") yandex->dislike(track["id"].toString());
+}
+
 void ServiceManager::importPlaylist(const QString& url) {
     // вместо ссылки можно вставить путь к txt со строками "артист - название"
     QString path = url.trimmed();

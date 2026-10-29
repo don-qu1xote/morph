@@ -369,6 +369,27 @@ private slots:
         QVERIFY(errors.wait());
         QCOMPARE(unavailable.count(), 0);
     }
+    void dislikeHitsCollectionAndWave() {
+        serveWave();
+        api.on("GET", "/account/status",
+               [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 77}}}}); });
+
+        NetworkManager net;
+        YandexService yandex(&net);
+        yandex.setToken("token");
+        QSignalSpy wave(&yandex, &BaseService::waveReady);
+        yandex.getWave();
+        QVERIFY(wave.wait());
+
+        yandex.dislike("1");
+        QVERIFY(api.waitFor("/users/77/dislikes/tracks/add-multiple"));
+        QCOMPARE(api.requestsTo("/users/77/dislikes/tracks/add-multiple")[0].form().queryItemValue("track-ids"),
+                 QString("1:10"));
+
+        QVERIFY(api.waitFor("/rotor/session/s1/feedback", 2));
+        QJsonObject event = api.requestsTo("/rotor/session/s1/feedback").last().json()["event"].toObject();
+        QCOMPARE(event["type"].toString(), QString("dislike"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestYandexService)

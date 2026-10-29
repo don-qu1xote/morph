@@ -2643,6 +2643,18 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        Image {
+                                            visible: currentTrack && currentTrack.service === "Yandex"
+                                            source: "qrc:/assets/dislike.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; sourceSize: Qt.size(64, 64); layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.text }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: (mouse) => {
+                                                    MorphServices.dislike(currentTrack)
+                                                    showToast("Won't recommend this one")
+                                                    playNext()
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 

@@ -25,6 +25,7 @@ public:
 
     void reportListen(const QString& trackId, double playedSeconds, double lengthSeconds, bool completed);
     void setLiked(const QString& trackId, bool liked);
+    void dislike(const QString& trackId);
     void fetchLikes();
 
 signals:

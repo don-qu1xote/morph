@@ -133,6 +133,21 @@ private slots:
         QCOMPARE(yandexApi.requestsTo("/users/5/likes/tracks/add-multiple")[0].form().queryItemValue("track-ids"),
                  QString("9"));
     }
+    void dislikeIsYandexOnly() {
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("c");
+        yandexApi.requests.clear();
+
+        services.dislike({{"id", "sc1"}, {"service", "SoundCloud"}});
+        services.dislike({{"id", "8"}, {"service", "Yandex"}});
+        QVERIFY(yandexApi.waitFor("/users/5/dislikes/tracks/add-multiple"));
+        QCOMPARE(yandexApi.requestsTo("/users/5/dislikes/tracks/add-multiple").size(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestServiceManager)
