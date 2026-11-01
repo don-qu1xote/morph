@@ -194,6 +194,25 @@ private slots:
         QVERIFY(yandexApi.waitFor("/users/5/likes/tracks/remove"));
     }
 
+    // в историю уходит сам трек, хотя ListenTracker знает только id
+    void listenIsRecordedWithTheTrack() {
+        QFile::remove(PathProvider::getDataPath() + "/listening.jsonl");
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QVariantMap track{{"id", "sc9"}, {"service", "SoundCloud"}, {"artist", "Zamay"}, {"title", "Song"}};
+
+        services.nowPlaying(track);
+        services.reportListen("SoundCloud", "sc9", "", 15, 200, false);
+        services.dislike(track);
+
+        const QList<ListenEvent>& events = services.recommender()->history().events();
+        QCOMPARE(events.size(), 2);
+        QCOMPARE(events[0].track["artist"].toString(), QString("Zamay"));
+        QVERIFY(events[0].skipped());
+        QCOMPARE(events[1].kind, ListenEvent::Dislike);
+    }
+
     // без синхронизации связь ищется, но коллекция в Яндексе не меняется
     void linkingWithoutSyncLeavesYandexAlone() {
         QFile::remove(PathProvider::getDataPath() + "/library.json");

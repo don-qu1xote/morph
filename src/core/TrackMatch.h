@@ -19,6 +19,8 @@ QString songKey(const QVariantMap& track);
 
 // первый артист, первым в списке
 QString mainArtist(const QVariantMap& track);
+// он же для сравнения: без регистра, пробелов и знаков, ё как е
+QString artistKey(const QVariantMap& track);
 
 // насколько candidate похож на wanted, от 0 до 1. Длительность 0 значит неизвестна
 double score(const QVariantMap& wanted, const QVariantMap& candidate);

@@ -65,6 +65,9 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(m_linkTimer, &QTimer::timeout, this, &ServiceManager::linkNext);
     connect(m_library, &Library::changed, m_linkTimer, qOverload<>(&QTimer::start));
 
+    m_recommender = new Recommender(PathProvider::getDataPath(), this);
+    connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
+
     connect(this, &ServiceManager::streamUrlReady, this, [this](const QString& trackId, const QString& url) {
         m_direct.remove(trackId);
         // поток с YouTube через VPN начинает играть заметно позже яндексовского,
@@ -219,8 +222,13 @@ void ServiceManager::prefetch(const QString& serviceName, const QString& trackId
 // её играет другая версия: лайкнутая, найденная в Яндексе или поиском
 void ServiceManager::directStreamFailed(const QString& trackId) {
     if (!m_direct.remove(trackId) || finder->knows(trackId)) return;
-    QVariantMap track = m_library->trackById(trackId);
+    QVariantMap track = knownTrack(trackId);
     if (!track.isEmpty()) finder->find(trackId, wantedFrom(track), m_prefetching.contains(trackId));
+}
+
+QVariantMap ServiceManager::knownTrack(const QString& trackId) const {
+    QVariantMap track = m_started.value(trackId);
+    return track.isEmpty() ? m_library->trackById(trackId) : track;
 }
 
 // Песни из MAIN без версии в Яндексе ищутся там по одной и с паузой, чтобы
@@ -251,11 +259,6 @@ void ServiceManager::linkNext() {
         }
         m_linkTimer->start();
     });
-}
-
-QString ServiceManager::linkedYandexId(const QString& trackId) const {
-    QVariantMap track = m_library->trackById(trackId);
-    return track.isEmpty() ? QString() : m_library->yandexId(TrackMatch::songKey(track));
 }
 
 // Играет не та версия: файл в кэше от прошлой выкидываем, иначе QML снова
@@ -290,20 +293,32 @@ void ServiceManager::reportPlay(const QString& serviceName, const QString& track
     if (BaseService* s = service(serviceName)) s->reportPlay(trackId, albumId);
 }
 
+void ServiceManager::nowPlaying(const QVariantMap& track) {
+    QString trackId = track["id"].toString();
+    // трек, который так и не доиграли (выход из приложения), не должен копиться
+    if (m_started.size() > 50) m_started.clear();
+    if (!trackId.isEmpty()) m_started.insert(trackId, track);
+    reportPlay(track["service"].toString(), trackId, track["album"].toString());
+}
+
 void ServiceManager::reportListen(const QString& serviceName, const QString& trackId, const QString& albumId,
                                   double playedSeconds, double lengthSeconds, bool completed) {
     Q_UNUSED(albumId);
+    QVariantMap track = knownTrack(trackId);
+    if (!track.isEmpty()) m_recommender->listened(track, playedSeconds, lengthSeconds, completed);
+    m_started.remove(trackId);
     if (completed) mixer->trackFinished(trackId);
     if (serviceName == "Yandex") {
         yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
         return;
     }
     // прослушивание с SoundCloud засчитывается версии в Яндексе: его волна учится и на нём
-    QString yandexId = m_syncToYandex ? linkedYandexId(trackId) : QString();
+    QString yandexId = m_syncToYandex && !track.isEmpty() ? m_library->yandexId(TrackMatch::songKey(track)) : QString();
     if (!yandexId.isEmpty()) yandex->reportListen(yandexId, playedSeconds, lengthSeconds, completed);
 }
 
 void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
+    m_recommender->liked(track, liked);
     if (liked) mixer->addSeed(track);
     if (track["service"].toString() == "Yandex") {
         yandex->setLiked(track["id"].toString(), liked);
@@ -315,6 +330,7 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
 }
 
 void ServiceManager::dislike(const QVariantMap& track) {
+    m_recommender->disliked(track);
     if (track["service"].toString() == "Yandex") yandex->dislike(track["id"].toString());
 }
 

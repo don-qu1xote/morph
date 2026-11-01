@@ -14,6 +14,7 @@
 #include "../services/LyricsService.h"
 #include "FallbackFinder.h"
 #include "Library.h"
+#include "Recommender.h"
 #include "WaveMixer.h"
 
 class QTimer;
@@ -24,6 +25,7 @@ public:
     explicit ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent = nullptr);
 
     Library* library() const { return m_library; }
+    Recommender* recommender() const { return m_recommender; }
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -41,6 +43,8 @@ public slots:
     void otherVersion(const QVariantMap& track);
     QVariantMap fallbackSource(const QVariantMap& track) const;
     void reportPlay(const QString& serviceName, const QString& trackId, const QString& albumId);
+    // то же, что reportPlay, но с самим треком: истории нужны артист и название
+    void nowPlaying(const QVariantMap& track);
     void reportListen(const QString& serviceName, const QString& trackId, const QString& albumId, double playedSeconds,
                       double lengthSeconds, bool completed);
     void setLiked(const QVariantMap& track, bool liked);
@@ -79,7 +83,7 @@ private:
     BaseService* service(const QString& name) const;
     void directStreamFailed(const QString& trackId);
     void linkNext();
-    QString linkedYandexId(const QString& trackId) const;
+    QVariantMap knownTrack(const QString& trackId) const;
 
     QString m_yandexToken;
     // ищутся заранее и ещё не включены
@@ -90,6 +94,9 @@ private:
     int m_linksThisRun = 0;
     bool m_syncToYandex = false;
     Library* m_library;
+    Recommender* m_recommender;
+    // включённые и ещё не доигранные треки: прослушивание приходит только с id
+    QHash<QString, QVariantMap> m_started;
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;

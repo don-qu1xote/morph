@@ -93,6 +93,10 @@ QString TrackMatch::mainArtist(const QVariantMap& track) {
     return firstArtist(parts(track).artist).trimmed();
 }
 
+QString TrackMatch::artistKey(const QVariantMap& track) {
+    return words(firstArtist(parts(track).artist)).join("");
+}
+
 // Очки складываются из трёх частей: название (половина веса), артист и
 // длительность. Длительность самая надёжная примета: лайвы, ремиксы и
 // чужие песни с тем же названием почти всегда другой длины

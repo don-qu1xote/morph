@@ -413,7 +413,7 @@ ApplicationWindow {
             MorphAudio.play("")
         }
 
-        MorphServices.reportPlay(cleanTrack.service, cleanTrack.id, cleanTrack.album)
+        MorphServices.nowPlaying(cleanTrack)
         MorphMpris.updateMetadata(cleanTrack)
         MorphDiscord.updateMetadata(cleanTrack)
         preResolveNext()

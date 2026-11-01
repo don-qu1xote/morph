@@ -66,6 +66,9 @@ add_library(morph_core STATIC
     src/core/FallbackFinder.h src/core/FallbackFinder.cpp
     src/core/PlaybackQueue.h src/core/PlaybackQueue.cpp
     src/core/Library.h src/core/Library.cpp
+    src/core/ListeningHistory.h src/core/ListeningHistory.cpp
+    src/core/TasteProfile.h src/core/TasteProfile.cpp
+    src/core/Recommender.h src/core/Recommender.cpp
     src/settings/SettingsManager.h src/settings/SettingsManager.cpp
     src/settings/PlaylistManager.h src/settings/PlaylistManager.cpp
     src/settings/TokenManager.h src/settings/TokenManager.cpp
