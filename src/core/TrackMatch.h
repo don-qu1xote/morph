@@ -13,6 +13,13 @@ namespace TrackMatch {
 // ключ для поиска повторов: первый артист и название без скобок
 QString key(const QVariantMap& track);
 
+// Песня целиком: key плюс пометки другой версии из скобок. «Song (Remix)» и
+// «Song» по key совпадают, а для библиотеки это разные треки
+QString songKey(const QVariantMap& track);
+
+// первый артист, первым в списке
+QString mainArtist(const QVariantMap& track);
+
 // насколько candidate похож на wanted, от 0 до 1. Длительность 0 значит неизвестна
 double score(const QVariantMap& wanted, const QVariantMap& candidate);
 
@@ -21,6 +28,10 @@ QVariantMap fromQuery(const QString& query);
 
 // обратно в строку для поиска
 QString query(const QVariantMap& track);
+
+// запрос для поиска на другой площадке: первый артист и название без скобок,
+// даже если у ютубовского клипа артист записан в самом названии
+QString searchQuery(const QVariantMap& track);
 
 } // namespace TrackMatch
 

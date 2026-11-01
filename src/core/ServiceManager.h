@@ -13,12 +13,17 @@
 #include "../services/YouTubeService.h"
 #include "../services/LyricsService.h"
 #include "FallbackFinder.h"
+#include "Library.h"
 #include "WaveMixer.h"
+
+class QTimer;
 
 class ServiceManager : public QObject {
     Q_OBJECT
 public:
     explicit ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent = nullptr);
+
+    Library* library() const { return m_library; }
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -44,6 +49,7 @@ public slots:
     void setYandexToken(const QString& token);
     void setSoundCloudClientId(const QString& clientId);
     void setMixedWave(bool enabled);
+    void setSyncToYandex(bool enabled) { m_syncToYandex = enabled; }
     void setAudioQuality(const QString& quality);
     void setYandexQuality(const QString& quality);
     void setSoundCloudQuality(const QString& quality);
@@ -71,10 +77,19 @@ private:
     void importTextFile(const QString& path);
     static QVariantMap wantedFrom(const QVariantMap& track);
     BaseService* service(const QString& name) const;
+    void directStreamFailed(const QString& trackId);
+    void linkNext();
+    QString linkedYandexId(const QString& trackId) const;
 
     QString m_yandexToken;
     // ищутся заранее и ещё не включены
     QSet<QString> m_prefetching;
+    // включены напрямую с SoundCloud или YouTube, а не как замена
+    QSet<QString> m_direct;
+    QTimer* m_linkTimer;
+    int m_linksThisRun = 0;
+    bool m_syncToYandex = false;
+    Library* m_library;
     NetworkManager* net;
     CacheManager* cache;
     YandexService* yandex;

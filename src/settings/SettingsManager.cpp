@@ -88,9 +88,11 @@ QVariantMap SettingsManager::loadSession() {
 }
 
 void SettingsManager::toggleLike(const QVariantMap& track) {
-    m_playlists->toggleLike(track);
+    QVariantList removed = m_playlists->toggleLike(track);
     save();
-    emit likeToggled(track, m_playlists->isLiked(track["id"].toString()));
+    if (removed.isEmpty()) emit likeToggled(track, true);
+    // каждая снятая версия уходит в свой сервис
+    for (const QVariant& t : std::as_const(removed)) emit likeToggled(t.toMap(), false);
 }
 
 void SettingsManager::mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds) {
@@ -291,6 +293,16 @@ void SettingsManager::setAutoplayEnabled(bool enabled) {
 bool SettingsManager::getAutoplayEnabled() {
     if (!m_data.contains("autoplay")) return true;
     return m_data["autoplay"].toBool();
+}
+
+void SettingsManager::setSyncToYandex(bool enabled) {
+    m_data["sync_to_yandex"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getSyncToYandex() {
+    return m_data["sync_to_yandex"].toBool(false);
 }
 
 void SettingsManager::setWaveSetting(const QString& key, const QString& seed) {

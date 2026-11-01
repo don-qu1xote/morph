@@ -5,6 +5,7 @@
 #include <QTest>
 
 #include "core/ServiceManager.h"
+#include "core/TrackMatch.h"
 #include "support/FakeHttpServer.h"
 #include "support/FakeTools.h"
 #include "utils/PathProvider.h"
@@ -69,6 +70,20 @@ class TestFallback : public QObject {
         qputenv("YTDLP_CANDIDATES", file.fileName().toUtf8());
     }
 
+    // трек id отдаётся: download-info и xml с адресом, как у настоящего Яндекса
+    void servePlayable(int id) {
+        QString base = yandexApi.url();
+        QString path = QString("/tracks/%1").arg(id);
+        yandexApi.on("GET", path + "/download-info", [base, id](const HttpRequest&) {
+            QJsonObject info{{"bitrateInKbps", 320}, {"downloadInfoUrl", base + QString("/dl/%1").arg(id)}};
+            return jsonResult(QJsonArray{info});
+        });
+        yandexApi.on("GET", QString("/dl/%1").arg(id), [](const HttpRequest&) {
+            return HttpResponse{200, "<download-info><host>cdn.yandex.example</host><path>/a/b</path>"
+                                     "<ts>1</ts><s>s</s></download-info>"};
+        });
+    }
+
     static QVariantMap yandexTrack(const QString& id, const QString& artist, const QString& title) {
         return {{"id", id}, {"service", "Yandex"}, {"artist", artist}, {"title", title}, {"durationMs", 200000}};
     }
@@ -100,6 +115,7 @@ private slots:
     void init() {
         QFile::remove(dir.filePath("yt-dlp.log"));
         QFile::remove(PathProvider::getDataPath() + "/fallback_choices.json");
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
         qunsetenv("YTDLP_URL");
         qunsetenv("YTDLP_CANDIDATES");
         qunsetenv("YTDLP_BROKEN");
@@ -326,6 +342,56 @@ private slots:
         services.resolve("Yandex", "707");
         QVERIFY(streams.wait(10000));
         QCOMPARE(chosen.last()[1].toMap()["id"].toString(), QString("fresh"));
+    }
+
+    // в MAIN у песни есть лайкнутая версия с SoundCloud: она играет сразу, без поиска
+    void likedVersionReplacesRemovedTrack() {
+        serveRemoved(1001, "Rare", "Liked");
+        serveSoundCloud({soundcloudTrack(77, "uploader", "Rare - Liked")});
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("token");
+        services.setSoundCloudClientId("client");
+        services.library()->syncLikes({yandexTrack("1001", "Rare", "Liked"), QVariantMap{{"id", "77"},
+                                                                                         {"service", "SoundCloud"},
+                                                                                         {"artist", "uploader"},
+                                                                                         {"title", "Rare - Liked"},
+                                                                                         {"durationMs", 200000}}});
+        QSignalSpy streams(&services, &ServiceManager::streamUrlReady);
+
+        services.resolve("Yandex", "1001");
+        QVERIFY(streams.wait());
+        QCOMPARE(streams[0][0].toString(), QString("1001"));
+        QCOMPARE(streams[0][1].toString(), QString("https://sc.example/77.mp3"));
+        QVERIFY(soundcloudApi.requestsTo("/search/tracks").isEmpty());
+        QVERIFY(ytDlpCalls().isEmpty());
+    }
+
+    // трек с SoundCloud удалили, а в Яндексе есть та же песня: играет она
+    void deletedSoundCloudTrackPlaysFromYandex() {
+        servePlayable(2002);
+        soundcloudApi.on("GET", "/tracks/88", [](const HttpRequest&) { return HttpResponse{404, "{}"}; });
+        serveSoundCloud({});
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("token");
+        services.setSoundCloudClientId("client");
+        QVariantMap liked{{"id", "88"}, {"service", "SoundCloud"}, {"artist", "Gone"}, {"title", "Upload"}};
+        services.library()->syncLikes({liked});
+        services.library()->link(TrackMatch::songKey(liked), yandexTrack("2002", "Gone", "Upload"));
+        QSignalSpy streams(&services, &ServiceManager::streamUrlReady);
+        QSignalSpy chosen(&services, &ServiceManager::fallbackChosen);
+
+        services.resolve("SoundCloud", "88");
+        QVERIFY(streams.wait());
+        QCOMPARE(streams[0][0].toString(), QString("88"));
+        QVERIFY(streams[0][1].toString().startsWith("https://cdn.yandex.example/get-mp3/"));
+        QCOMPARE(chosen[0][1].toMap()["service"].toString(), QString("Yandex"));
+        QVERIFY(soundcloudApi.requestsTo("/search/tracks").isEmpty());
     }
 
     // следующий трек нашёлся заранее и сразу скачан: потом он стартует с диска

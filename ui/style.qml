@@ -460,7 +460,7 @@ ApplicationWindow {
         var tempTracks = []
         loadedTracksCount = 0
         if (isLiked) {
-            var likes = MorphSettings.getLikedTracks()
+            var likes = MorphLibrary.tracks()
             for(var i = 0; i < likes.length; i++) {
                 var item = likes[i]
                 if (!item.service) item.service = "Yandex"
@@ -989,7 +989,7 @@ function playTrack(track, index) {
                                     Column {
                                         Layout.fillWidth: true; Layout.alignment: Qt.AlignVCenter; spacing: -2
                                         Text { 
-                                            width: parent.width; text: currentPlaylist === "" ? "LIKED TRACKS" : currentPlaylist.toUpperCase()
+                                            width: parent.width; text: currentPlaylist === "" ? "MAIN" : currentPlaylist.toUpperCase()
                                             color: "white"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black; elide: Text.ElideRight 
                                         }
                                         Text {
@@ -1708,11 +1708,11 @@ function playTrack(track, index) {
                                                                     layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
                                                                 }
                                                                 Text { 
-                                                                    text: "LIKED TRACKS"; color: "white"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black
+                                                                    text: "MAIN"; color: "white"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black
                                                                     anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 12
                                                                 }
                                                                 Text {
-                                                                    text: (window.likesVersion, MorphSettings.getLikedTracks().length)
+                                                                    text: MorphLibrary.count
                                                                     color: "white"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black
                                                                     anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 12
                                                                 }
@@ -2049,6 +2049,45 @@ function playTrack(track, index) {
                                                         Behavior on color { ColorAnimation { duration: 150 } }
                                                         Rectangle {
                                                             x: autoplaySwitch.checked ? parent.width - width - 2 : 2; y: 2
+                                                            width: 16; height: 16; radius: 8; color: "white"
+                                                            Behavior on x { NumberAnimation { duration: 150 } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                                        }
+
+                                        Button {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 50
+                                            onClicked: (mouse) => {
+                                                var newState = !MorphSettings.getSyncToYandex()
+                                                MorphSettings.setSyncToYandex(newState)
+                                                showToast("Sync to Yandex " + (newState ? "enabled" : "disabled"))
+                                            }
+                                            background: Rectangle { color: "#1a1a1a"; radius: 10; border.color: "#333" }
+                                            contentItem: RowLayout {
+                                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                                anchors.leftMargin: 15; anchors.rightMargin: 15; spacing: 10
+                                                Image {
+                                                    source: "qrc:/assets/sync.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter
+                                                    sourceSize.width: 40; sourceSize.height: 40
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: "white" }
+                                                }
+                                                Text { text: "Sync to Yandex"; color: "white"; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Medium; Layout.fillWidth: true; verticalAlignment: Text.AlignVCenter }
+                                                Switch {
+                                                    id: syncYandexSwitch; Layout.alignment: Qt.AlignVCenter; Layout.preferredHeight: 20; padding: 0
+                                                    checked: (window.settingsVersion, MorphSettings.getSyncToYandex())
+                                                    onToggled: {
+                                                        MorphSettings.setSyncToYandex(checked)
+                                                        showToast("Sync to Yandex " + (checked ? "enabled" : "disabled"))
+                                                    }
+                                                    indicator: Rectangle {
+                                                        implicitWidth: 36; implicitHeight: 20; radius: 10
+                                                        color: syncYandexSwitch.checked ? "#b57339" : "#222"
+                                                        Behavior on color { ColorAnimation { duration: 150 } }
+                                                        Rectangle {
+                                                            x: syncYandexSwitch.checked ? parent.width - width - 2 : 2; y: 2
                                                             width: 16; height: 16; radius: 8; color: "white"
                                                             Behavior on x { NumberAnimation { duration: 150 } }
                                                         }
@@ -3267,6 +3306,8 @@ function playTrack(track, index) {
         id: trackDelegate
         Rectangle {
             id: trackDelegateRoot
+            // где ещё есть эта песня из MAIN, через запятую
+            property string alsoOn: model.alsoOn || ""
             width: ListView.view ? ListView.view.width : 500
             height: 54
             color: "transparent"
@@ -3364,6 +3405,10 @@ function playTrack(track, index) {
                     RowLayout {
                         Layout.fillWidth: true; spacing: 6
                         Image { source: getServiceIcon(model.service || "Yandex"); Layout.preferredWidth: 12; Layout.preferredHeight: 12 }
+                        Repeater {
+                            model: trackDelegateRoot.alsoOn ? trackDelegateRoot.alsoOn.split(",") : []
+                            Image { source: getServiceIcon(modelData); Layout.preferredWidth: 10; Layout.preferredHeight: 10; opacity: 0.45 }
+                        }
                         Text {
                             id: artistTextText
                             Layout.preferredWidth: contentWidth
@@ -4000,7 +4045,7 @@ function playTrack(track, index) {
         function onLikesChanged() { 
             window.likesVersion++
             if (currentPlaylist === "") {
-                var likes = MorphSettings.getLikedTracks()
+                var likes = MorphLibrary.tracks()
                 var temp = []
                 for(var i = 0; i < likes.length; i++) {
                     var item = likes[i]

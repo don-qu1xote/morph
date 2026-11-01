@@ -5,7 +5,14 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QTimer>
 #include <QUrl>
+
+// связи с Яндексом ищутся в фоне: столько за запуск и с такой паузой
+static const int kLinksPerRun = 40;
+static const int kLinkPauseMs = 1500;
+// та же песня с уверенностью, как у фолбэка: иначе лайк уйдёт не тому треку
+static const double kLinkScore = 0.85;
 
 ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent)
     : QObject(parent), net(net), cache(cache) {
@@ -41,7 +48,25 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         if (!m_prefetching.remove(trackId)) emit errorOccurred("Not found on SoundCloud or YouTube: " + query);
     });
     connect(finder, &FallbackFinder::noOtherVersion, this, [this]() { emit errorOccurred("No other versions found"); });
+    // MAIN: версии той же песни с других площадок пробуются раньше поиска
+    m_library = new Library(PathProvider::getDataPath() + "/library.json", this);
+    m_library->setAvailability([this](const QVariantMap& t) {
+        return t["service"].toString() != "Yandex" || yandex->isAvailable(t["id"].toString());
+    });
+    finder->setYandex(yandex);
+    finder->setKnownSources([this](const QString& trackId) { return m_library->alternatives(trackId); });
+    connect(yandex, &YandexService::streamFailed, finder, &FallbackFinder::streamFailed);
+    // после finder: его заменам не помогли, а это сам трек не заиграл
+    connect(soundcloud, &SoundCloudService::streamFailed, this, &ServiceManager::directStreamFailed);
+    connect(youtube, &YouTubeService::resolveFailed, this, &ServiceManager::directStreamFailed);
+    m_linkTimer = new QTimer(this);
+    m_linkTimer->setSingleShot(true);
+    m_linkTimer->setInterval(kLinkPauseMs);
+    connect(m_linkTimer, &QTimer::timeout, this, &ServiceManager::linkNext);
+    connect(m_library, &Library::changed, m_linkTimer, qOverload<>(&QTimer::start));
+
     connect(this, &ServiceManager::streamUrlReady, this, [this](const QString& trackId, const QString& url) {
+        m_direct.remove(trackId);
         // поток с YouTube через VPN начинает играть заметно позже яндексовского,
         // поэтому следующий трек сразу ложится в кэш и потом стартует с диска
         if (m_prefetching.remove(trackId) && url.contains("googlevideo.com") && this->cache->savesTracks()) {
@@ -169,6 +194,7 @@ void ServiceManager::resolve(const QString& serviceName, const QString& trackId)
         finder->find(trackId, TrackMatch::fromQuery(query), false);
         return;
     }
+    if (s == soundcloud || s == youtube) m_direct.insert(trackId);
     if (s) s->resolveStreamUrl(trackId);
 }
 
@@ -180,9 +206,56 @@ void ServiceManager::prefetch(const QString& serviceName, const QString& trackId
 
     m_prefetching.insert(trackId);
     QString query = YouTubeService::queryFromTrackId(trackId);
-    if (s == youtube && !query.isEmpty()) finder->find(trackId, TrackMatch::fromQuery(query), true);
-    else if (s == youtube) youtube->prefetch(trackId);
+    if (s == youtube && !query.isEmpty()) {
+        finder->find(trackId, TrackMatch::fromQuery(query), true);
+        return;
+    }
+    if (s == soundcloud || s == youtube) m_direct.insert(trackId);
+    if (s == youtube) youtube->prefetch(trackId);
     else s->resolveStreamUrl(trackId);
+}
+
+// Трек с SoundCloud или YouTube удалили или закрыли. Если песня есть в MAIN,
+// её играет другая версия: лайкнутая, найденная в Яндексе или поиском
+void ServiceManager::directStreamFailed(const QString& trackId) {
+    if (!m_direct.remove(trackId) || finder->knows(trackId)) return;
+    QVariantMap track = m_library->trackById(trackId);
+    if (!track.isEmpty()) finder->find(trackId, wantedFrom(track), m_prefetching.contains(trackId));
+}
+
+// Песни из MAIN без версии в Яндексе ищутся там по одной и с паузой, чтобы
+// сотни лайков с SoundCloud не ушли в Яндекс одной пачкой
+void ServiceManager::linkNext() {
+    if (m_yandexToken.isEmpty() || m_linksThisRun >= kLinksPerRun) return;
+    QString key = m_library->nextToLink();
+    if (key.isEmpty()) return;
+
+    QVariantMap track = m_library->representative(key);
+    m_library->markLinkTried(key);
+    ++m_linksThisRun;
+    yandex->searchTracks(TrackMatch::searchQuery(track), [this, key, track](const QVariantList& found) {
+        QVariantMap best;
+        double bestScore = kLinkScore;
+        for (const QVariant& v : found) {
+            // в Яндексе подписи чистые, поэтому он «искомый», а трек с SoundCloud
+            // «кандидат»: у кандидата артист может сидеть в названии
+            double score = TrackMatch::score(v.toMap(), track);
+            if (score >= bestScore) {
+                bestScore = score;
+                best = v.toMap();
+            }
+        }
+        if (!best.isEmpty()) {
+            m_library->link(key, best);
+            if (m_syncToYandex) yandex->setLiked(best["id"].toString(), true);
+        }
+        m_linkTimer->start();
+    });
+}
+
+QString ServiceManager::linkedYandexId(const QString& trackId) const {
+    QVariantMap track = m_library->trackById(trackId);
+    return track.isEmpty() ? QString() : m_library->yandexId(TrackMatch::songKey(track));
 }
 
 // Играет не та версия: файл в кэше от прошлой выкидываем, иначе QML снова
@@ -221,12 +294,24 @@ void ServiceManager::reportListen(const QString& serviceName, const QString& tra
                                   double playedSeconds, double lengthSeconds, bool completed) {
     Q_UNUSED(albumId);
     if (completed) mixer->trackFinished(trackId);
-    if (serviceName == "Yandex") yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
+    if (serviceName == "Yandex") {
+        yandex->reportListen(trackId, playedSeconds, lengthSeconds, completed);
+        return;
+    }
+    // прослушивание с SoundCloud засчитывается версии в Яндексе: его волна учится и на нём
+    QString yandexId = m_syncToYandex ? linkedYandexId(trackId) : QString();
+    if (!yandexId.isEmpty()) yandex->reportListen(yandexId, playedSeconds, lengthSeconds, completed);
 }
 
 void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     if (liked) mixer->addSeed(track);
-    if (track["service"].toString() == "Yandex") yandex->setLiked(track["id"].toString(), liked);
+    if (track["service"].toString() == "Yandex") {
+        yandex->setLiked(track["id"].toString(), liked);
+        return;
+    }
+    // связь знает и песню, которую только что убрали из MAIN
+    QString yandexId = m_syncToYandex ? m_library->yandexId(TrackMatch::songKey(track)) : QString();
+    if (!yandexId.isEmpty()) yandex->setLiked(yandexId, liked);
 }
 
 void ServiceManager::dislike(const QVariantMap& track) {
@@ -293,7 +378,10 @@ void ServiceManager::setYandexToken(const QString& token) {
     lyrics->setYandexToken(token);
 
     // QML зовёт это на каждом старте и перезагрузке стиля, лайки тянем только при новом токене
-    if (changed && !token.isEmpty()) yandex->fetchLikes();
+    if (changed && !token.isEmpty()) {
+        yandex->fetchLikes();
+        m_linkTimer->start();
+    }
 }
 
 void ServiceManager::setSoundCloudClientId(const QString& clientId) {

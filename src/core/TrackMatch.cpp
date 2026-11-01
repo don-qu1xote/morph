@@ -78,6 +78,21 @@ QString TrackMatch::key(const QVariantMap& track) {
     return words(firstArtist(p.artist)).join("") + "|" + words(p.title).join("");
 }
 
+QString TrackMatch::songKey(const QVariantMap& track) {
+    Parts p = parts(track);
+    QStringList extras = words(p.title + " " + p.extras);
+    QStringList versions;
+    for (const QString& w : otherVersions()) {
+        if (extras.contains(w)) versions.append(w);
+    }
+    QString base = key(track);
+    return versions.isEmpty() ? base : base + "|" + versions.join(",");
+}
+
+QString TrackMatch::mainArtist(const QVariantMap& track) {
+    return firstArtist(parts(track).artist).trimmed();
+}
+
 // Очки складываются из трёх частей: название (половина веса), артист и
 // длительность. Длительность самая надёжная примета: лайвы, ремиксы и
 // чужие песни с тем же названием почти всегда другой длины
@@ -133,4 +148,11 @@ QString TrackMatch::query(const QVariantMap& track) {
     QString artist = track["artist"].toString();
     QString title = track["title"].toString();
     return artist.isEmpty() ? title : artist + " - " + title;
+}
+
+QString TrackMatch::searchQuery(const QVariantMap& track) {
+    Parts p = parts(track);
+    QString artist = firstArtist(p.artist).trimmed();
+    QString title = p.title.simplified();
+    return artist.isEmpty() ? title : artist + " " + title;
 }

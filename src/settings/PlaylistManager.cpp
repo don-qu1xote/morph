@@ -1,4 +1,6 @@
 #include "PlaylistManager.h"
+#include "../core/TrackMatch.h"
+#include <algorithm>
 
 PlaylistManager::PlaylistManager(QJsonObject* data, QObject* parent)
     : QObject(parent), m_data(data) {}
@@ -12,23 +14,32 @@ void PlaylistManager::updateLikedSet() {
     }
 }
 
-void PlaylistManager::toggleLike(const QVariantMap& track) {
+// Снятый лайк снимается со всех версий песни: в MAIN она одна запись, и
+// оставшийся лайк на другой площадке вернул бы её обратно. Возвращает снятые
+QVariantList PlaylistManager::toggleLike(const QVariantMap& track) {
     QJsonArray likes = (*m_data)["likes"].toArray();
     QString id = track["id"].toString();
-    bool found = false;
-    for (int i = 0; i < likes.size(); ++i) {
-        if (likes[i].toObject()["id"].toString() == id) {
-            likes.removeAt(i);
-            found = true;
-            break;
+    QString key = TrackMatch::songKey(track);
+    bool liked = std::any_of(likes.begin(), likes.end(),
+                             [&id](const QJsonValue& v) { return v.toObject()["id"].toString() == id; });
+
+    QVariantList removed;
+    if (liked) {
+        QJsonArray kept;
+        for (const auto& v : std::as_const(likes)) {
+            QVariantMap other = v.toObject().toVariantMap();
+            bool sameSong = other["id"].toString() == id || (!key.endsWith('|') && TrackMatch::songKey(other) == key);
+            if (sameSong) removed.append(other);
+            else kept.append(v);
         }
-    }
-    if (!found) {
+        likes = kept;
+    } else {
         likes.insert(0, QJsonObject::fromVariantMap(track));
     }
     (*m_data)["likes"] = likes;
     updateLikedSet();
     emit likesChanged();
+    return removed;
 }
 
 bool PlaylistManager::isLiked(const QString& trackId) {

@@ -36,6 +36,24 @@ private slots:
         QCOMPARE(changed.count(), 3);
     }
 
+    // в MAIN песня одна, поэтому снятый лайк снимается со всех её версий
+    void unlikeRemovesEveryVersionOfTheSong() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        QVariantMap yandex{{"id", "y1"}, {"service", "Yandex"}, {"artist", "Zamay"}, {"title", "Неошансон"}};
+        QVariantMap soundcloud{
+            {"id", "s1"}, {"service", "SoundCloud"}, {"artist", "uploader"}, {"title", "Zamay - Неошансон"}};
+        QVariantMap remix{{"id", "s2"}, {"service", "SoundCloud"}, {"artist", "Zamay"}, {"title", "Неошансон (Remix)"}};
+        pm.toggleLike(yandex);
+        pm.toggleLike(soundcloud);
+        pm.toggleLike(remix);
+
+        QVariantList removed = pm.toggleLike(soundcloud);
+        QCOMPARE(removed.size(), 2);
+        QCOMPARE(likedIds(pm), QStringList({"s2"}));
+        QVERIFY(pm.toggleLike(yandex).isEmpty());
+    }
+
     void playlistKeepsNewestTrackFirst() {
         QJsonObject data;
         PlaylistManager pm(&data);

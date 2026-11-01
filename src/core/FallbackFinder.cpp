@@ -1,6 +1,7 @@
 #include "FallbackFinder.h"
 #include "TrackMatch.h"
 #include "../services/SoundCloudService.h"
+#include "../services/YandexService.h"
 #include "../services/YouTubeService.h"
 #include <QFile>
 #include <QJsonDocument>
@@ -54,7 +55,7 @@ void FallbackFinder::find(const QString& trackId, const QVariantMap& wanted, boo
     }
 
     m_searches.insert(trackId, search);
-    startSearch(trackId);
+    begin(trackId);
 }
 
 void FallbackFinder::nextVersion(const QString& trackId, const QVariantMap& wanted) {
@@ -74,7 +75,7 @@ void FallbackFinder::nextVersion(const QString& trackId, const QVariantMap& want
             search.tried.insert(search.current);
         }
         m_searches.insert(trackId, search);
-        startSearch(trackId);
+        begin(trackId);
         return;
     }
 
@@ -103,16 +104,35 @@ void FallbackFinder::streamFailed(const QString& trackId) {
         saveChoices();
         it->fromChoices = false;
         it->candidates.clear();
-        it->tried.clear();
+        it->tried = {it->current};
         it->current.clear();
-        startSearch(trackId);
+        begin(trackId);
         return;
     }
     chooseNextUntried(trackId);
 }
 
+// та же песня, которую ты сам лайкнул на другой площадке, надёжнее любого поиска
+void FallbackFinder::begin(const QString& trackId) {
+    Search& search = m_searches[trackId];
+    const QList<QVariantMap> known = m_known ? m_known(trackId) : QList<QVariantMap>();
+    for (QVariantMap c : known) {
+        if (c["service"].toString() == "Yandex" && !yandex) continue;
+        bool listed = std::any_of(search.candidates.cbegin(), search.candidates.cend(),
+                                  [&c](const QVariantMap& k) { return candidateKey(k) == candidateKey(c); });
+        if (listed) continue;
+        c["score"] = 1.0;
+        search.candidates.append(c);
+    }
+    bool untried = std::any_of(search.candidates.cbegin(), search.candidates.cend(),
+                               [&search](const QVariantMap& c) { return !search.tried.contains(candidateKey(c)); });
+    if (untried) chooseNextUntried(trackId);
+    else startSearch(trackId);
+}
+
 void FallbackFinder::startSearch(const QString& trackId) {
     Search& search = m_searches[trackId];
+    search.askedSoundCloud = true;
     if (!soundcloud->hasToken()) {
         askYouTube(trackId);
         return;
@@ -144,7 +164,10 @@ void FallbackFinder::onCandidates(const QString& trackId, const QVariantList& fo
         return a["score"].toDouble() > b["score"].toDouble();
     });
 
-    bool confident = !it->candidates.isEmpty() && it->candidates.first()["score"].toDouble() >= kConfident;
+    // уже игравшие не в счёт: известная версия могла как раз и не заиграть
+    bool confident = std::any_of(it->candidates.cbegin(), it->candidates.cend(), [&it](const QVariantMap& c) {
+        return !it->tried.contains(candidateKey(c)) && c["score"].toDouble() >= kConfident;
+    });
     if (!it->askedYouTube && !confident) {
         askYouTube(trackId);
         return;
@@ -161,6 +184,11 @@ void FallbackFinder::chooseNextUntried(const QString& trackId) {
         }
     }
 
+    // известные версии кончились, а поиска ещё не было
+    if (!it->askedSoundCloud) {
+        startSearch(trackId);
+        return;
+    }
     // на SoundCloud подходящее кончилось, но YouTube ещё не спрашивали
     if (!it->askedYouTube) {
         askYouTube(trackId);
@@ -203,8 +231,11 @@ void FallbackFinder::choose(const QString& trackId, const QVariantMap& candidate
 }
 
 void FallbackFinder::stream(const QString& trackId, const QVariantMap& candidate, bool prefetch) {
-    if (candidate["service"].toString() == "SoundCloud") soundcloud->streamAs(candidate["id"].toString(), trackId);
-    else youtube->streamAs(candidate["id"].toString(), trackId, prefetch);
+    QString service = candidate["service"].toString();
+    QString id = candidate["id"].toString();
+    if (service == "SoundCloud") soundcloud->streamAs(id, trackId);
+    else if (service == "Yandex" && yandex) yandex->streamAs(id, trackId);
+    else youtube->streamAs(id, trackId, prefetch);
 }
 
 QString FallbackFinder::candidateKey(const QVariantMap& candidate) {

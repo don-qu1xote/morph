@@ -26,6 +26,7 @@
   - Likes are synced with your Yandex account both ways.
 - **Removed Tracks Fallback**: If Yandex no longer serves a track, morph looks for the same recording on SoundCloud and YouTube, compares title, artist and duration so live versions, covers and remixes lose to the original, and plays it under the original track. A badge next to the bitrate shows where the track plays from; click it to switch to the next best version, and the choice is remembered, so playlists and likes keep working.
 - **Fast YouTube Start**: The next track is found and downloaded while the current one plays, and yt-dlp asks YouTube with a single lightweight client, so tracks from YouTube start almost as fast as Yandex ones.
+- **MAIN, One Library for All Services**: Likes from Yandex, SoundCloud and YouTube become one list with one entry per song. Each song plays from the most reliable service that has it, and if one service drops it, another version plays instead. Turn on **Sync to Yandex** in Settings to send likes and listens from SoundCloud and YouTube to the same songs on Yandex, so My Vibe learns from them too.
 - **Text List Import**: Paste a path to a `.txt` file with `Artist - Title` lines into the import field to get a playlist played through search.
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
 - **For You**: Yandex personal playlists (Playlist of the Day, Premiere, Deja Vu, Stash) and fresh editorial picks on the home screen, next to SoundCloud daily mixes.

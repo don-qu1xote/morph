@@ -63,6 +63,7 @@ Application::Application(QObject *parent) : QObject(parent) {
     services->setSoundCloudQuality(settings->getSoundCloudQuality());
     auto applyWaveSettings = [this]() {
         services->setMixedWave(settings->getMixedWaveEnabled());
+        services->setSyncToYandex(settings->getSyncToYandex());
         QStringList seeds;
         for (const QVariant& seed : settings->getWaveSettings()) seeds.append(seed.toString());
         services->setWaveSettings(seeds);
@@ -77,6 +78,11 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(listens, &ListenTracker::listenFinished, services, &ServiceManager::reportListen);
     connect(settings, &SettingsManager::likeToggled, services, &ServiceManager::setLiked);
     connect(services, &ServiceManager::likesFetched, settings, &SettingsManager::mergeServiceLikes);
+    // MAIN собирается из лайков, поэтому идёт за ними следом
+    Library* library = services->library();
+    library->syncLikes(settings->getLikedTracks());
+    connect(settings, &SettingsManager::likesChanged, library,
+            [this, library]() { library->syncLikes(settings->getLikedTracks()); });
 
     QTimer* gcTimer = new QTimer(this);
     connect(gcTimer, &QTimer::timeout, this, [this]() {
@@ -96,6 +102,7 @@ void Application::bindContextProperties() {
     engine->rootContext()->setContextProperty("MorphAudio", audio);
     engine->rootContext()->setContextProperty("MorphServices", services);
     engine->rootContext()->setContextProperty("MorphQueue", queue);
+    engine->rootContext()->setContextProperty("MorphLibrary", services->library());
     engine->rootContext()->setContextProperty("MorphSettings", settings);
     engine->rootContext()->setContextProperty("MorphMpris", mpris);
     engine->rootContext()->setContextProperty("MorphDiscord", discord);

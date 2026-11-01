@@ -24,6 +24,10 @@ public:
     void importPlaylist(const QString& url) override;
 
     void reportListen(const QString& trackId, double playedSeconds, double lengthSeconds, bool completed);
+    // поток трека yandexId под чужим id trackId; не вышло, значит streamFailed
+    void streamAs(const QString& yandexId, const QString& trackId);
+    // треки по запросу; при ошибке пустой список, ответ приходит всегда
+    void searchTracks(const QString& text, std::function<void(const QVariantList&)> found);
     void setLiked(const QString& trackId, bool liked);
     void dislike(const QString& trackId);
     void fetchLikes();
@@ -43,13 +47,17 @@ signals:
     void likesFetched(const QVariantList& tracks, const QStringList& allIds);
     // трек есть в базе, но не отдаётся (убран из каталога); длительность 0, если неизвестна
     void streamUnavailable(const QString& trackId, const QString& artist, const QString& title, qint64 durationMs);
+    void streamFailed(const QString& trackId);
     // name, seed, imageUrl, color
     void stationsReady(const QVariantList& stations);
     // key, name и values: name, seed, unspecified
     void waveSettingsReady(const QVariantList& options);
 
 private:
-    void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate);
+    // refused: сервер ответил, что трек не отдаст; иначе это сеть
+    using StreamFailure = std::function<void(bool refused, const QString& error)>;
+    void requestStream(const QString& trackId, const QString& target, StreamFailure failed);
+    void fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate, StreamFailure failed);
     QVariantList parseYandexTracks(const QJsonArray& tracksArray);
     QString fullTrackId(const QString& trackId) const;
     void reportUnavailable(const QString& trackId);

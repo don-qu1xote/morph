@@ -347,6 +347,32 @@ void YandexService::findFirst(const QString& type, const QString& text, std::fun
     });
 }
 
+void YandexService::searchTracks(const QString& text, std::function<void(const QVariantList&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+
+    QUrl url(m_api + "/search");
+    QUrlQuery q;
+    q.addQueryItem("text", text);
+    q.addQueryItem("type", "track");
+    q.addQueryItem("page", "0");
+    url.setQuery(q);
+
+    net->get(
+        url, yandexHeaders(m_token),
+        [this, found](QNetworkReply* reply) {
+            QJsonArray results = QJsonDocument::fromJson(reply->readAll())
+                                     .object()["result"]
+                                     .toObject()["tracks"]
+                                     .toObject()["results"]
+                                     .toArray();
+            found(reply->error() == QNetworkReply::NoError ? parseYandexTracks(results) : QVariantList());
+        },
+        false);
+}
+
 static QVariantMap parseStation(const QJsonObject& station) {
     QJsonObject id = station["id"].toObject();
     QJsonObject icon = station["icon"].toObject();
@@ -666,23 +692,37 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
         return;
     }
 
+    requestStream(trackId, trackId, [this, trackId](bool refused, const QString& error) {
+        // сервер отказал: трек не отдают, ищем его в другом месте.
+        // если ответа не было вовсе, это сеть, и искать бесполезно
+        if (refused) reportUnavailable(trackId);
+        else emit errorOccurred(QString("Network Error: %1").arg(error));
+    });
+}
+
+void YandexService::streamAs(const QString& yandexId, const QString& trackId) {
+    if (m_token.isEmpty() || m_unavailable.contains(yandexId)) {
+        emit streamFailed(trackId);
+        return;
+    }
+    requestStream(yandexId, trackId, [this, trackId](bool, const QString&) { emit streamFailed(trackId); });
+}
+
+void YandexService::requestStream(const QString& trackId, const QString& target, StreamFailure failed) {
     QUrl url(QString("%1/tracks/%2/download-info").arg(m_api, trackId));
     net->get(
         url, yandexHeaders(m_token),
-        [this, trackId](QNetworkReply* reply) {
+        [this, target, failed](QNetworkReply* reply) {
             if (reply->error() != QNetworkReply::NoError) {
-                // сервер ответил ошибкой: трек не отдают, ищем его в другом месте.
-                // если ответа не было вовсе, это сеть, и искать бесполезно
                 int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                if (status >= 400) reportUnavailable(trackId);
-                else emit errorOccurred(QString("Network Error: %1").arg(reply->errorString()));
+                failed(status >= 400, reply->errorString());
                 return;
             }
 
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             QJsonArray results = doc.object()["result"].toArray();
             if (results.isEmpty()) {
-                reportUnavailable(trackId);
+                failed(true, QString());
                 return;
             }
 
@@ -705,7 +745,7 @@ void YandexService::resolveStreamUrl(const QString& trackId) {
             int br = results[bestIdx].toObject()["bitrateInKbps"].toInt();
             int targetBr = br > 0 ? br : targetBitrate;
             QString downloadInfoUrl = results[bestIdx].toObject()["downloadInfoUrl"].toString();
-            fetchDownloadInfo(trackId, QUrl(downloadInfoUrl), targetBr);
+            fetchDownloadInfo(target, QUrl(downloadInfoUrl), targetBr, failed);
         },
         false);
 }
@@ -769,7 +809,7 @@ void YandexService::reportListen(const QString& trackId, double playedSeconds, d
     if (m_waveBatchOf.contains(trackId)) sendWaveFeedback(completed ? "trackFinished" : "skip", trackId, playedSeconds);
 }
 
-void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate) {
+void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, int bitrate, StreamFailure failed) {
     QMap<QString, QByteArray> h;
     h["User-Agent"] = "Yandex-Music-Desktop/5.92.1";
     h["X-Yandex-Music-Client"] = "WindowsDesktop/5.92.1";
@@ -777,8 +817,11 @@ void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, i
     h["X-Retpath-Y"] = "https://music.yandex.ru/";
     h["Accept-Language"] = "ru";
 
-    net->get(url, h, [this, trackId, bitrate](QNetworkReply* reply) {
-        if (reply->error() != QNetworkReply::NoError) return;
+    net->get(url, h, [this, trackId, bitrate, failed](QNetworkReply* reply) {
+        if (reply->error() != QNetworkReply::NoError) {
+            failed(false, reply->errorString());
+            return;
+        }
 
         QByteArray data = reply->readAll();
         QXmlStreamReader xml(data);
@@ -794,7 +837,10 @@ void YandexService::fetchDownloadInfo(const QString& trackId, const QUrl& url, i
             }
         }
 
-        if (host.isEmpty() || path.isEmpty()) return;
+        if (host.isEmpty() || path.isEmpty()) {
+            failed(true, QString());
+            return;
+        }
 
         QString sign = QCryptographicHash::hash(
             ("XGRlNCpTE_w0pS7i-709aj9m_ms9ndv" + path.mid(1) + s).toUtf8(),

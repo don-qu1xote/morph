@@ -15,7 +15,7 @@ class PlaylistManager : public QObject {
 public:
     explicit PlaylistManager(QJsonObject* data, QObject* parent = nullptr);
 
-    void toggleLike(const QVariantMap& track);
+    QVariantList toggleLike(const QVariantMap& track);
     bool isLiked(const QString& trackId);
     QVariantList getLikedTracks();
     void mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds);

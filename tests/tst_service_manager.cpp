@@ -1,3 +1,4 @@
+#include <QFile>
 #include <QJsonArray>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -6,6 +7,7 @@
 #include "core/ServiceManager.h"
 #include "support/FakeHttpServer.h"
 #include "support/FakeTools.h"
+#include "utils/PathProvider.h"
 
 class TestServiceManager : public QObject {
     Q_OBJECT
@@ -147,6 +149,67 @@ private slots:
         services.dislike({{"id", "8"}, {"service", "Yandex"}});
         QVERIFY(yandexApi.waitFor("/users/5/dislikes/tracks/add-multiple"));
         QCOMPARE(yandexApi.requestsTo("/users/5/dislikes/tracks/add-multiple").size(), 1);
+    }
+
+    // Лайк с SoundCloud находит ту же песню в Яндексе. С синхронизацией лайк,
+    // прослушивание и снятый лайк уходят и туда
+    void soundCloudLikeIsLinkedAndSyncedToYandex() {
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+        yandexApi.on("GET", "/search", [](const HttpRequest&) {
+            QJsonObject track{{"id", 31},
+                              {"title", "Неошансон"},
+                              {"durationMs", 187000},
+                              {"artists", QJsonArray{QJsonObject{{"name", "Zamay"}}}},
+                              {"albums", QJsonArray{QJsonObject{{"id", 9}, {"title", "Album"}}}}};
+            return jsonResult(QJsonObject{{"tracks", QJsonObject{{"results", QJsonArray{track}}}}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("e");
+        services.setSyncToYandex(true);
+        yandexApi.requests.clear();
+
+        QVariantMap liked{{"id", "s1"},
+                          {"service", "SoundCloud"},
+                          {"artist", "uploader"},
+                          {"title", "Zamay - Неошансон"},
+                          {"durationMs", 188000}};
+        services.library()->syncLikes({liked});
+        QVERIFY(yandexApi.waitFor("/users/5/likes/tracks/add-multiple"));
+        QCOMPARE(yandexApi.requestsTo("/search").last().query.queryItemValue("text"), QString("Zamay Неошансон"));
+        QCOMPARE(yandexApi.requestsTo("/users/5/likes/tracks/add-multiple")[0].form().queryItemValue("track-ids"),
+                 QString("31:9"));
+        QCOMPARE(services.library()->sourcesOf("s1"), QStringList({"SoundCloud", "Yandex"}));
+
+        services.reportListen("SoundCloud", "s1", "", 180, 188, true);
+        QVERIFY(yandexApi.waitFor("/play-audio"));
+        QCOMPARE(yandexApi.requestsTo("/play-audio")[0].form().queryItemValue("track-id"), QString("31"));
+
+        services.library()->syncLikes({});
+        services.setLiked(liked, false);
+        QVERIFY(yandexApi.waitFor("/users/5/likes/tracks/remove"));
+    }
+
+    // без синхронизации связь ищется, но коллекция в Яндексе не меняется
+    void linkingWithoutSyncLeavesYandexAlone() {
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("f");
+        yandexApi.requests.clear();
+
+        QVariantMap liked{{"id", "s2"}, {"service", "SoundCloud"}, {"artist", "Zamay"}, {"title", "Неошансон"}};
+        services.library()->syncLikes({liked});
+        QVERIFY(yandexApi.waitFor("/search"));
+        QTRY_COMPARE(services.library()->sourcesOf("s2").size(), 2);
+        services.setLiked(liked, true);
+        QTest::qWait(200);
+        QVERIFY(yandexApi.requestsTo("/users/5/likes/tracks/add-multiple").isEmpty());
     }
 
     // лайк 2 убран из каталога: волна Яндекса его не вернёт, а смешанная вернёт

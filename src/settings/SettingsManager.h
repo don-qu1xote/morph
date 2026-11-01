@@ -77,6 +77,10 @@ public slots:
     // когда список кончился, играть волну по последнему треку
     void setAutoplayEnabled(bool enabled);
     bool getAutoplayEnabled();
+    // лайки и прослушивания треков с SoundCloud и YouTube дублировать в Яндекс,
+    // чтобы его рекомендации учитывали и их. Меняет коллекцию, поэтому выключено
+    void setSyncToYandex(bool enabled);
+    bool getSyncToYandex();
     // настройки Моей волны: ключ (diversity, moodEnergy, language) и сид значения
     void setWaveSetting(const QString& key, const QString& seed);
     QVariantMap getWaveSettings();

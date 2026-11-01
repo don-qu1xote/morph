@@ -6,8 +6,10 @@
 #include <QObject>
 #include <QSet>
 #include <QVariantMap>
+#include <functional>
 
 class SoundCloudService;
+class YandexService;
 class YouTubeService;
 
 // Замена для трека, которого нет в Яндексе. Раньше играл первый результат
@@ -18,8 +20,17 @@ class YouTubeService;
 class FallbackFinder : public QObject {
     Q_OBJECT
 public:
+    using KnownSources = std::function<QList<QVariantMap>(const QString& trackId)>;
+
     FallbackFinder(SoundCloudService* soundcloud, YouTubeService* youtube, const QString& choicesPath,
                    QObject* parent = nullptr);
+
+    // Версии той же песни, которые уже известны: лайкнутые на другой площадке
+    // или найденные в Яндексе. Пробуются раньше поиска, им не нужны очки
+    void setKnownSources(KnownSources known) { m_known = std::move(known); }
+    // без него версии из Яндекса пропускаются
+    void setYandex(YandexService* yandex) { this->yandex = yandex; }
+    bool knows(const QString& trackId) const { return m_searches.contains(trackId); }
 
     // wanted: artist, title и durationMs трека, который ищем
     void find(const QString& trackId, const QVariantMap& wanted, bool prefetch);
@@ -42,6 +53,7 @@ private:
         QVariantMap wanted;
         bool prefetch = false;
         bool waiting = false;
+        bool askedSoundCloud = false;
         bool askedYouTube = false;
         // ищем не первую замену, а другую версию: берём лучшую из неигравших
         bool switching = false;
@@ -51,6 +63,7 @@ private:
         QString current;
     };
 
+    void begin(const QString& trackId);
     void startSearch(const QString& trackId);
     void askYouTube(const QString& trackId);
     void onCandidates(const QString& trackId, const QVariantList& found);
@@ -63,6 +76,8 @@ private:
 
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
+    YandexService* yandex = nullptr;
+    KnownSources m_known;
     QString m_choicesPath;
     QHash<QString, Search> m_searches;
     // TrackMatch::key исходного трека: выбранная замена

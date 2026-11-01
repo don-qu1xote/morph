@@ -23,6 +23,22 @@ private slots:
         QVERIFY(TrackMatch::key(track("One", "Intro")) != TrackMatch::key(track("Other", "Intro")));
     }
 
+    // для библиотеки ремикс и лайв это другие треки, а feat нет
+    void songKeyKeepsTheVersion() {
+        QString original = TrackMatch::songKey(track("Artist", "Song"));
+        QCOMPARE(TrackMatch::songKey(track("uploader", "Artist - Song (feat. Guest)")), original);
+        QVERIFY(TrackMatch::songKey(track("Artist", "Song (Remix)")) != original);
+        QVERIFY(TrackMatch::songKey(track("Artist", "Song [Live]")) !=
+                TrackMatch::songKey(track("Artist", "Song (Remix)")));
+    }
+
+    void searchQueryIsCleanArtistAndTitle() {
+        QCOMPARE(TrackMatch::searchQuery(track("Channel", "Zamay - Неошансон (Official Video)")),
+                 QString("Zamay Неошансон"));
+        QCOMPARE(TrackMatch::searchQuery(track("Lead, Guest", "Song")), QString("Lead Song"));
+        QCOMPARE(TrackMatch::mainArtist(track("Lead feat. Guest", "Song")), QString("Lead"));
+    }
+
     void exactUploadIsConfident() {
         QVariantMap wanted = track("Zamay", "Неошансон", 187000);
         QVERIFY(score(wanted, track("Zamay - Topic", "Неошансон", 187000)) >= 0.85);
