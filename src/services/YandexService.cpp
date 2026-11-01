@@ -6,6 +6,7 @@
 #include <QUrlQuery>
 #include <QRegularExpression>
 #include <QDateTime>
+#include <QSet>
 #include <algorithm>
 #include <utility>
 
@@ -416,6 +417,91 @@ void YandexService::artistAlbums(const QString& artistId, std::function<void(con
                 QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["albums"].toArray();
             for (const auto& a : list) albums.append(parseAlbum(a.toObject()));
             found(reply->error() == QNetworkReply::NoError ? albums : QVariantList());
+        },
+        false);
+}
+
+void YandexService::searchArtist(const QString& name, std::function<void(const QString&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+    QUrl url(m_api + "/search");
+    QUrlQuery q;
+    q.addQueryItem("text", name);
+    q.addQueryItem("type", "artist");
+    q.addQueryItem("page", "0");
+    url.setQuery(q);
+    net->get(
+        url, yandexHeaders(m_token),
+        [found](QNetworkReply* reply) {
+            QJsonArray results = QJsonDocument::fromJson(reply->readAll())
+                                     .object()["result"]
+                                     .toObject()["artists"]
+                                     .toObject()["results"]
+                                     .toArray();
+            bool ok = reply->error() == QNetworkReply::NoError && !results.isEmpty();
+            found(ok ? results[0].toObject()["id"].toVariant().toString() : QString());
+        },
+        false);
+}
+
+static QString artistImage(const QJsonObject& artist) {
+    QString uri = artist["cover"].toObject()["uri"].toString();
+    if (uri.isEmpty()) uri = artist["ogImage"].toString();
+    if (uri.isEmpty()) return {};
+    uri.replace("%%", "400x400");
+    return uri.startsWith("http") ? uri : "https://" + uri;
+}
+
+// Страница артиста одним запросом: популярные треки, альбомы, похожие
+// артисты, жанры и слушатели за месяц. Пустой словарь, если не вышло
+void YandexService::artistInfo(const QString& artistId, std::function<void(const QVariantMap&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+    net->get(
+        QUrl(QString("%1/artists/%2/brief-info").arg(m_api, artistId)), yandexHeaders(m_token),
+        [this, artistId, found](QNetworkReply* reply) {
+            QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+            QJsonObject artist = result["artist"].toObject();
+            if (reply->error() != QNetworkReply::NoError || artist.isEmpty()) {
+                found({});
+                return;
+            }
+
+            QStringList genres;
+            for (const auto& g : artist["genres"].toArray()) genres.append(g.toString());
+
+            // последние релизы впереди, дальше остальные альбомы без повторов
+            QVariantList albums;
+            QSet<QString> seen;
+            for (const char* field : {"lastReleases", "albums"}) {
+                for (const auto& a : result[field].toArray()) {
+                    QVariantMap album = parseAlbum(a.toObject());
+                    if (seen.contains(album["id"].toString())) continue;
+                    seen.insert(album["id"].toString());
+                    albums.append(album);
+                }
+            }
+
+            QVariantList similar;
+            for (const auto& a : result["similarArtists"].toArray()) {
+                QJsonObject other = a.toObject();
+                similar.append(QVariantMap{{"id", other["id"].toVariant().toString()},
+                                           {"name", other["name"].toString()},
+                                           {"imageUrl", artistImage(other)}});
+            }
+
+            found({{"yandexId", artistId},
+                   {"name", artist["name"].toString()},
+                   {"imageUrl", artistImage(artist)},
+                   {"genres", genres.join(", ")},
+                   {"listeners", result["stats"].toObject()["lastMonthListeners"].toInt()},
+                   {"popular", parseYandexTracks(result["popularTracks"].toArray())},
+                   {"albums", albums},
+                   {"similar", similar}});
         },
         false);
 }

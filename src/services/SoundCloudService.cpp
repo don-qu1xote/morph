@@ -345,24 +345,28 @@ void SoundCloudService::resolveStreamUrl(const QString& trackId) {
 
 // Варианты замены для трека, которого нет в Яндексе: выбирает FallbackFinder
 void SoundCloudService::searchCandidates(const QString& query, const QString& trackId) {
+    searchTracks(query, 10, [this, trackId](const QVariantList& tracks) { emit candidatesReady(trackId, tracks); });
+}
+
+void SoundCloudService::searchTracks(const QString& query, int limit, std::function<void(const QVariantList&)> done) {
     if (m_token.isEmpty()) {
-        emit candidatesReady(trackId, {});
+        done({});
         return;
     }
 
     QUrl url(m_api + "/search/tracks");
     QUrlQuery q;
     q.addQueryItem("q", query);
-    q.addQueryItem("limit", "10");
+    q.addQueryItem("limit", QString::number(limit));
     addClientId(q);
     url.setQuery(q);
 
     net->get(
         url, authHeaders(),
-        [this, trackId](QNetworkReply* reply) {
+        [this, done](QNetworkReply* reply) {
             QJsonArray found = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
             if (reply->error() != QNetworkReply::NoError) found = {};
-            emit candidatesReady(trackId, parseSoundCloudTracks(playableOnly(found)));
+            done(parseSoundCloudTracks(playableOnly(found)));
         },
         false);
 }

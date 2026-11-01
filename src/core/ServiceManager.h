@@ -38,6 +38,10 @@ public slots:
     void setWaveSettings(const QStringList& settingSeeds);
     void fetchWaveStations();
     void fetchLyrics(const QVariantMap& track);
+    // страница артиста: из Яндекса, если он там есть, иначе треки с SoundCloud
+    void fetchArtist(const QString& name, const QVariantMap& track);
+    // альбом со страницы артиста открывается как плейлист
+    void openAlbum(const QVariantMap& album);
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
@@ -79,6 +83,9 @@ signals:
     void waveSettingsReady(const QVariantList& options);
     void lyricsReady(const QString& trackId, const QVariantList& lines, bool synced, const QString& source);
     void lyricsMissing(const QString& trackId);
+    // name, imageUrl, genres, listeners, popular, albums, similar и своё:
+    // yours (песни из MAIN), inMain, plays; requestedName как в fetchArtist
+    void artistReady(const QVariantMap& artist);
 
 private:
     void attach(BaseService* service);
@@ -88,6 +95,7 @@ private:
     void directStreamFailed(const QString& trackId);
     void linkNext();
     QVariantMap knownTrack(const QString& trackId) const;
+    void deliverArtist(const QString& requested, QVariantMap info);
 
     QString m_yandexToken;
     // ищутся заранее и ещё не включены

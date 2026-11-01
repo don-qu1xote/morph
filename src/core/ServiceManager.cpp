@@ -205,6 +205,65 @@ void ServiceManager::fetchLyrics(const QVariantMap& track) {
     if (!track["id"].toString().isEmpty()) lyrics->fetch(track);
 }
 
+void ServiceManager::fetchArtist(const QString& name, const QVariantMap& track) {
+    QString wanted = name.trimmed();
+    if (wanted.isEmpty()) return;
+
+    // без Яндекса или если его там нет: что нашлось на SoundCloud под этим именем
+    auto fromSoundCloud = [this, wanted]() {
+        soundcloud->searchTracks(wanted, 30, [this, wanted](const QVariantList& tracks) {
+            QString key = TrackMatch::artistKey({{"artist", wanted}});
+            QVariantList own;
+            for (const QVariant& t : tracks) {
+                if (TrackMatch::artistKey(t.toMap()) == key) own.append(t);
+            }
+            deliverArtist(wanted, {{"name", wanted}, {"popular", own.isEmpty() ? tracks : own}});
+        });
+    };
+    auto fromYandex = [this, wanted, fromSoundCloud](const QString& artistId) {
+        if (artistId.isEmpty()) {
+            fromSoundCloud();
+            return;
+        }
+        yandex->artistInfo(artistId, [this, wanted, fromSoundCloud](const QVariantMap& info) {
+            if (info.isEmpty()) fromSoundCloud();
+            else deliverArtist(wanted, info);
+        });
+    };
+
+    // id есть у трека из Яндекса, но только для первого артиста, а нажать могли на гостя
+    bool mainArtist = TrackMatch::artistKey(track) == TrackMatch::artistKey({{"artist", wanted}});
+    QString artistId = mainArtist ? track["artistId"].toString() : QString();
+    if (!artistId.isEmpty()) fromYandex(artistId);
+    else yandex->searchArtist(wanted, fromYandex);
+}
+
+// Своё к странице артиста: его песни в MAIN и сколько раз он играл
+void ServiceManager::deliverArtist(const QString& requested, QVariantMap info) {
+    QString key = TrackMatch::artistKey({{"artist", info["name"].toString()}});
+    QVariantList yours;
+    for (const QVariant& t : m_library->tracks()) {
+        if (TrackMatch::artistKey(t.toMap()) == key) yours.append(t);
+    }
+    info["requestedName"] = requested;
+    info["inMain"] = yours.size();
+    info["yours"] = yours.mid(0, 20);
+    info["plays"] = m_recommender->profile().heard(key);
+    emit artistReady(info);
+}
+
+void ServiceManager::openAlbum(const QVariantMap& album) {
+    yandex->albumTracks(album["id"].toString(), [this, album](const QVariantList& tracks) {
+        if (tracks.isEmpty()) {
+            emit errorOccurred("Album is unavailable: " + album["title"].toString());
+            return;
+        }
+        QString coverUrl = album["coverUrl"].toString();
+        if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
+        emit playlistImported(album["title"].toString(), coverUrl, tracks);
+    });
+}
+
 void ServiceManager::getDailyMixes() {
     for (const auto& [name, s] : m_services) s->getDailyMixes();
     // свои миксы считаются на месте, треки по клику через importPlaylist

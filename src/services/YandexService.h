@@ -34,6 +34,10 @@ public:
     // последние альбомы артиста, новые первыми
     void artistAlbums(const QString& artistId, std::function<void(const QVariantList&)> found);
     void albumTracks(const QString& albumId, std::function<void(const QVariantList&)> found);
+    // id первого найденного артиста или пусто
+    void searchArtist(const QString& name, std::function<void(const QString&)> found);
+    // yandexId, name, imageUrl, genres, listeners, popular, albums, similar
+    void artistInfo(const QString& artistId, std::function<void(const QVariantMap&)> found);
     static QVariantMap parseAlbum(const QJsonObject& album);
     void setLiked(const QString& trackId, bool liked);
     void dislike(const QString& trackId);

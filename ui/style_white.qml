@@ -187,6 +187,16 @@ ApplicationWindow {
         showToast(name.toUpperCase() + " WAVE")
     }
 
+    // страница артиста: сразу то, что известно по треку, остальное придёт в onArtistReady
+    function showArtistProfile(artistName, currentTrackObj) {
+        var name = artistName ? artistName.trim() : ""
+        if (name === "") return
+        artistPage.info = { name: name, imageUrl: "" }
+        artistPage.loading = true
+        artistPage.open()
+        MorphServices.fetchArtist(name, currentTrackObj || {})
+    }
+
     // у ссылок YouTube срок жизни записан в самом адресе: expire=<время в секундах>
     function isStreamUrlFresh(url) {
         var expire = /[?&]expire=(\d+)/.exec(url)
@@ -2807,7 +2817,13 @@ ApplicationWindow {
                                             RowLayout {
                                                 width: parent.width; spacing: 6
                                                 Image { source: currentTrack ? getServiceIcon(currentTrack.service) : ""; Layout.preferredWidth: 10; Layout.preferredHeight: 10 }
-                                                Text { Layout.fillWidth: true; text: currentTrack ? currentTrack.artist : ""; color: "#555555"; font.family: mainFont.name; font.pixelSize: 12; elide: Text.ElideRight }
+                                                Text {
+                                                    Layout.fillWidth: true; text: currentTrack ? currentTrack.artist : ""; color: "#555555"; font.family: mainFont.name; font.pixelSize: 12; elide: Text.ElideRight
+                                                    MouseArea {
+                                                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                        onClicked: if (currentTrack) showArtistProfile(currentTrack.artist.split(/\s*,\s*|\s+feat\.\s+/i)[0], currentTrack)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -3145,7 +3161,7 @@ ApplicationWindow {
         property bool openedUpwards: false
         parent: Overlay.overlay
         width: 160; height: {
-            var count = 6
+            var count = 7
             if (openedUpwards) count++
             if (currentView === "library" && currentPlaylist !== "" && saveLastImport) count++
             return (count * 40) + 10
@@ -3221,6 +3237,17 @@ ApplicationWindow {
                     id: artistWaveMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                     onClicked: (mouse) => {
                         if (targetContextTrack) startArtistWave(targetContextTrack.artist.split(/\s*,\s*|\s+feat\.\s+/i)[0])
+                        trackContextMenu.close()
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: artistPageMouse.containsMouse ? "#cccccc" : "transparent"; radius: 4
+                Text { anchors.centerIn: parent; text: "ARTIST PAGE"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black }
+                MouseArea {
+                    id: artistPageMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        if (targetContextTrack) showArtistProfile(targetContextTrack.artist.split(/\s*,\s*|\s+feat\.\s+/i)[0], targetContextTrack)
                         trackContextMenu.close()
                     }
                 }
@@ -3381,6 +3408,12 @@ ApplicationWindow {
             for (var i = 0; i < stations.length; i++) stationsModel.append(stations[i])
         }
         function onWaveSettingsReady(options) { waveSettingOptions = options }
+        function onArtistReady(info) {
+            // ответ на прошлый клик, когда уже открыт другой артист, не нужен
+            if (info.requestedName !== artistPage.info.name) return
+            artistPage.info = info
+            artistPage.loading = false
+        }
         function onFallbackChosen(trackId, source) {
             if (currentTrack && currentTrack.id === trackId) currentFallback = source
         }
@@ -3593,6 +3626,47 @@ ApplicationWindow {
             MorphServices.fetchLyrics(currentTrack)
         }
         onSeekRequested: (timeMs) => MorphAudio.position = timeMs
+    }
+
+    ArtistPage {
+        id: artistPage
+        parent: Overlay.overlay
+        x: (parent.width - width) / 2; y: (parent.height - height) / 2
+        width: Math.max(640, Math.min(parent.width * 0.8, 860))
+        height: Math.max(460, Math.min(parent.height * 0.85, 680))
+        currentTrackId: currentTrack ? String(currentTrack.id) : ""
+        backgroundColor: "#ffffff"; cardColor: "#f0f0f0"; textColor: "#111111"; subtextColor: "#888888"
+        hoverColor: "#e6e6e6"; borderColor: "#cccccc"; accentColor: "#b57339"; accentTextColor: "white"
+        fontFamily: mainFont.name
+        onPlayTracks: (tracks, index) => {
+            // играет как плейлист: «дальше» и очередь идут по этому списку
+            var list = []
+            for (var i = 0; i < tracks.length; i++) {
+                var t = tracks[i]
+                if (t.durationMs === undefined) t.durationMs = 0
+                if (!t.service) t.service = "Yandex"
+                list.push(t)
+            }
+            saveLastImport = false
+            currentPlaylist = artistPage.info.name || "Artist"
+            currentView = "library"
+            librarySubView = "tracks"
+            fullPlaylistTracks = list
+            libraryModel.clear()
+            loadedTracksCount = 0
+            loadNextChunk()
+            playTrack(libraryModel.get(index), index)
+        }
+        onWaveWanted: (name) => {
+            artistPage.close()
+            startArtistWave(name)
+        }
+        onAlbumWanted: (album) => {
+            artistPage.close()
+            saveLastImport = false
+            MorphServices.openAlbum(album)
+        }
+        onArtistWanted: (name) => showArtistProfile(name, null)
     }
 
     WaveSettingsPopup {

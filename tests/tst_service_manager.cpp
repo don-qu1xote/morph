@@ -16,6 +16,20 @@ class TestServiceManager : public QObject {
     FakeHttpServer soundcloudApi;
     FakeTools tools;
 
+    // поиск в Яндексе всегда находит «Zamay - Неошансон», id 31 в альбоме 9
+    void serveZamaySearch() {
+        yandexApi.on("GET", "/account/status",
+                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
+        yandexApi.on("GET", "/search", [](const HttpRequest&) {
+            QJsonObject track{{"id", 31},
+                              {"title", "Неошансон"},
+                              {"durationMs", 187000},
+                              {"artists", QJsonArray{QJsonObject{{"name", "Zamay"}}}},
+                              {"albums", QJsonArray{QJsonObject{{"id", 9}, {"title", "Album"}}}}};
+            return jsonResult(QJsonObject{{"tracks", QJsonObject{{"results", QJsonArray{track}}}}});
+        });
+    }
+
 private slots:
     void initTestCase() {
         QStandardPaths::setTestModeEnabled(true);
@@ -155,16 +169,7 @@ private slots:
     // прослушивание и снятый лайк уходят и туда
     void soundCloudLikeIsLinkedAndSyncedToYandex() {
         QFile::remove(PathProvider::getDataPath() + "/library.json");
-        yandexApi.on("GET", "/account/status",
-                     [](const HttpRequest&) { return jsonResult(QJsonObject{{"account", QJsonObject{{"uid", 5}}}}); });
-        yandexApi.on("GET", "/search", [](const HttpRequest&) {
-            QJsonObject track{{"id", 31},
-                              {"title", "Неошансон"},
-                              {"durationMs", 187000},
-                              {"artists", QJsonArray{QJsonObject{{"name", "Zamay"}}}},
-                              {"albums", QJsonArray{QJsonObject{{"id", 9}, {"title", "Album"}}}}};
-            return jsonResult(QJsonObject{{"tracks", QJsonObject{{"results", QJsonArray{track}}}}});
-        });
+        serveZamaySearch();
 
         NetworkManager net;
         CacheManager cache(&net);
@@ -224,6 +229,96 @@ private slots:
         QCOMPARE(services.recommender()->newShare(), 0.3);
     }
 
+    // Страница артиста из brief-info: популярное, альбомы, похожие. Нажали на
+    // гостя, а не на первого артиста трека: id ищется поиском по имени
+    void artistPageComesFromYandex() {
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
+        yandexApi.on("GET", "/search", [](const HttpRequest& r) {
+            if (r.query.queryItemValue("type") != "artist") return jsonResult(QJsonObject{});
+            return jsonResult(QJsonObject{{"artists", QJsonObject{{"results", QJsonArray{QJsonObject{{"id", 77}}}}}}});
+        });
+        yandexApi.on("GET", "/artists/77/brief-info", [](const HttpRequest&) {
+            QJsonObject artist{{"id", 77},
+                               {"name", "Guest"},
+                               {"genres", QJsonArray{"rusrap"}},
+                               {"cover", QJsonObject{{"uri", "avatars.example/g/%%"}}}};
+            QJsonObject popular{{"id", 7},
+                                {"title", "Hit"},
+                                {"durationMs", 180000},
+                                {"artists", QJsonArray{QJsonObject{{"id", 77}, {"name", "Guest"}}}}};
+            QJsonObject album{{"id", 5}, {"title", "LP"}, {"year", 2026}, {"coverUri", "c/%%"}};
+            QJsonObject single{{"id", 6}, {"title", "New"}, {"year", 2026}, {"type", "single"}};
+            return jsonResult(QJsonObject{{"artist", artist},
+                                          {"popularTracks", QJsonArray{popular}},
+                                          {"lastReleases", QJsonArray{single}},
+                                          {"albums", QJsonArray{album, single}},
+                                          {"similarArtists", QJsonArray{QJsonObject{{"id", 78}, {"name", "Friend"}}}},
+                                          {"stats", QJsonObject{{"lastMonthListeners", 1200}}}});
+        });
+        yandexApi.on("GET", "/albums/5/with-tracks", [](const HttpRequest&) {
+            QJsonObject t{{"id", 51}, {"title", "Intro"}, {"artists", QJsonArray{QJsonObject{{"name", "Guest"}}}}};
+            return jsonResult(QJsonObject{{"volumes", QJsonArray{QJsonArray{t}}}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("h");
+        services.library()->syncLikes(
+            {QVariantMap{{"id", "1"}, {"service", "Yandex"}, {"artist", "Guest"}, {"title", "Old"}}});
+        QSignalSpy ready(&services, &ServiceManager::artistReady);
+
+        QVariantMap track{{"id", "9"}, {"service", "Yandex"}, {"artist", "Lead, Guest"}, {"artistId", "70"}};
+        services.fetchArtist("Guest", track);
+        QVERIFY(ready.wait());
+        QVariantMap info = ready[0][0].toMap();
+        QCOMPARE(info["requestedName"].toString(), QString("Guest"));
+        QCOMPARE(info["imageUrl"].toString(), QString("https://avatars.example/g/400x400"));
+        QCOMPARE(info["genres"].toString(), QString("rusrap"));
+        QCOMPARE(info["listeners"].toInt(), 1200);
+        QCOMPARE(info["popular"].toList().size(), 1);
+        QStringList albums;
+        for (const QVariant& a : info["albums"].toList()) albums.append(a.toMap()["title"].toString());
+        QCOMPARE(albums, QStringList({"New", "LP"}));
+        QCOMPARE(info["similar"].toList()[0].toMap()["name"].toString(), QString("Friend"));
+        QCOMPARE(info["inMain"].toInt(), 1);
+        QVERIFY(yandexApi.requestsTo("/artists/70/brief-info").isEmpty());
+
+        QSignalSpy imported(&services, &ServiceManager::playlistImported);
+        services.openAlbum(info["albums"].toList()[1].toMap());
+        QVERIFY(imported.wait());
+        QCOMPARE(imported[0][0].toString(), QString("LP"));
+        QCOMPARE(imported[0][2].toList().size(), 1);
+    }
+
+    // в Яндексе артиста нет: страница из того, что нашлось на SoundCloud
+    void artistPageFallsBackToSoundCloud() {
+        yandexApi.on("GET", "/search", [](const HttpRequest&) {
+            return jsonResult(QJsonObject{{"artists", QJsonObject{{"results", QJsonArray{}}}}});
+        });
+        soundcloudApi.on("GET", "/search/tracks", [](const HttpRequest&) {
+            QJsonArray found{
+                QJsonObject{{"id", 1}, {"title", "Underground - Demo"}, {"user", QJsonObject{{"username", "x"}}}},
+                QJsonObject{{"id", 2}, {"title", "Other - Song"}, {"user", QJsonObject{{"username", "y"}}}}};
+            return jsonBody({{"collection", found}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("i");
+        services.setSoundCloudClientId("client");
+        QSignalSpy ready(&services, &ServiceManager::artistReady);
+
+        services.fetchArtist("Underground", {});
+        QVERIFY(ready.wait());
+        QVariantMap info = ready[0][0].toMap();
+        QCOMPARE(info["name"].toString(), QString("Underground"));
+        QVariantList popular = info["popular"].toList();
+        QCOMPARE(popular.size(), 1);
+        QCOMPARE(popular[0].toMap()["id"].toString(), QString("1"));
+    }
+
     // в историю уходит сам трек, хотя ListenTracker знает только id
     void listenIsRecordedWithTheTrack() {
         QFile::remove(PathProvider::getDataPath() + "/listening.jsonl");
@@ -246,6 +341,7 @@ private slots:
     // без синхронизации связь ищется, но коллекция в Яндексе не меняется
     void linkingWithoutSyncLeavesYandexAlone() {
         QFile::remove(PathProvider::getDataPath() + "/library.json");
+        serveZamaySearch();
         NetworkManager net;
         CacheManager cache(&net);
         ServiceManager services(&net, &cache);

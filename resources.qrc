@@ -7,6 +7,7 @@
     <file>ui/components/WaveSettingsPopup.qml</file>
     <file>ui/components/SidePanel.qml</file>
     <file>ui/components/MixCaption.qml</file>
+    <file>ui/components/ArtistPage.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
     <file>assets/cog.svg</file>

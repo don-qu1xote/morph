@@ -32,7 +32,7 @@
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
 - **Playlists by morph**: Daily Mixes built from the artists you play together, Discover Weekly with artists new to you (refreshed on Mondays), Release Radar with fresh releases from your favourites, On Repeat and Rediscover for old likes you haven't heard in a while. They come first in For You and use your listening on every service.
 - **For You**: Yandex personal playlists (Playlist of the Day, Premiere, Deja Vu, Stash) and fresh editorial picks on the home screen, next to SoundCloud daily mixes.
-- **Artist Profiles**: Browse detailed artist profiles displaying a biography, high-resolution avatar, list of albums, and tracks directly from the player.
+- **Artist Pages**: Photo, genres and monthly listeners, popular tracks, the artist's songs in your MAIN and how often you play them, the discography (an album opens as a playlist) and similar artists you can jump to. One click starts the artist wave. Open it from an artist name or from the track menu (**ARTIST PAGE**) in every theme; artists missing from Yandex get a page from SoundCloud.
 - **Advanced Playlist Management**:
   - Create, rename, and delete custom playlists.
   - Set custom cover images using external URLs (Imgur, Pinterest, etc.).

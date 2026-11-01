@@ -26,6 +26,8 @@ public:
 
     // варианты по "артист - название" для трека trackId, ответ в candidatesReady
     void searchCandidates(const QString& query, const QString& trackId);
+    // играбельные треки по запросу, без сигнала: для страницы артиста
+    void searchTracks(const QString& query, int limit, std::function<void(const QVariantList&)> done);
     // поток трека soundcloudId, но под чужим id trackId
     void streamAs(const QString& soundcloudId, const QString& trackId);
     // похожее на трек из запроса, ответ в relatedReady
