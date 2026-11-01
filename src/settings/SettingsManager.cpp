@@ -295,6 +295,16 @@ bool SettingsManager::getAutoplayEnabled() {
     return m_data["autoplay"].toBool();
 }
 
+void SettingsManager::setSmartWavesEnabled(bool enabled) {
+    m_data["smart_waves"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getSmartWavesEnabled() {
+    return m_data["smart_waves"].toBool(true);
+}
+
 void SettingsManager::setSyncToYandex(bool enabled) {
     m_data["sync_to_yandex"] = enabled;
     save();

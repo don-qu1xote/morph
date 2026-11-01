@@ -54,6 +54,9 @@ public slots:
     void setSoundCloudClientId(const QString& clientId);
     void setMixedWave(bool enabled);
     void setSyncToYandex(bool enabled) { m_syncToYandex = enabled; }
+    void setSmartWaves(bool enabled) { m_smartWaves = enabled; }
+    // familiar, balanced или new: сколько незнакомых артистов в волнах и миксах
+    void setDiscovery(const QString& level);
     void setAudioQuality(const QString& quality);
     void setYandexQuality(const QString& quality);
     void setSoundCloudQuality(const QString& quality);
@@ -93,6 +96,7 @@ private:
     QTimer* m_linkTimer;
     int m_linksThisRun = 0;
     bool m_syncToYandex = false;
+    bool m_smartWaves = true;
     Library* m_library;
     Recommender* m_recommender;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id

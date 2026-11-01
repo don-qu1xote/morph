@@ -77,6 +77,9 @@ public slots:
     // когда список кончился, играть волну по последнему треку
     void setAutoplayEnabled(bool enabled);
     bool getAutoplayEnabled();
+    // порядок волн решает своя модель, а не просто порядок Яндекса
+    void setSmartWavesEnabled(bool enabled);
+    bool getSmartWavesEnabled();
     // лайки и прослушивания треков с SoundCloud и YouTube дублировать в Яндекс,
     // чтобы его рекомендации учитывали и их. Меняет коллекцию, поэтому выключено
     void setSyncToYandex(bool enabled);

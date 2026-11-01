@@ -1,6 +1,8 @@
 #include <QFile>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QTest>
+#include <cmath>
 
 #include "core/Recommender.h"
 #include "core/TrackMatch.h"
@@ -22,7 +24,16 @@ class TestRecommender : public QObject {
     QString historyPath() const { return dir.filePath("listening.jsonl"); }
 
 private slots:
-    void init() { QFile::remove(historyPath()); }
+    void init() {
+        QFile::remove(historyPath());
+        QFile::remove(dir.filePath("ranker.json"));
+    }
+
+    static QStringList artists(const QVariantList& tracks) {
+        QStringList out;
+        for (const QVariant& t : tracks) out.append(t.toMap()["artist"].toString());
+        return out;
+    }
 
     void finishedAndSkippedAreTold() {
         ListenEvent e;
@@ -129,6 +140,134 @@ private slots:
         QCOMPARE(top.size(), 2);
         QCOMPARE(top[0].first, artist("Fresh"));
         QCOMPARE(p.name(top[1].first), QString("Loved"));
+    }
+
+    void rankerLearnsAndRemembers() {
+        Ranker ranker;
+        Ranker::Features skipped{{"bias", 1}, {"a:skipped", 1}};
+        Ranker::Features loved{{"bias", 1}, {"a:loved", 1}};
+        QCOMPARE(ranker.predict(skipped), ranker.predict(loved));
+        for (int i = 0; i < 10; ++i) {
+            ranker.learn(skipped, 0);
+            ranker.learn(loved, 1);
+        }
+        QVERIFY(ranker.predict(skipped) < 0.3);
+        QVERIFY(ranker.predict(loved) > 0.7);
+        QCOMPARE(ranker.updates(), 20);
+
+        Ranker restored;
+        restored.load(ranker.save());
+        QCOMPARE(restored.predict(loved), ranker.predict(loved));
+        QVERIFY(restored.mean("a:skipped") < 0);
+        // признак, которого модель не видела, начинает с подсказки
+        QCOMPARE(restored.mean("affinity"), 2.0);
+    }
+
+    // чем больше примеров у признака, тем уже разброс и тем реже разведка
+    void explorationNarrowsWithEvidence() {
+        Ranker ranker;
+        ranker.setSeed(7);
+        Ranker::Features x{{"a:new", 1}};
+        auto spread = [&ranker, &x]() {
+            double sum = 0, sq = 0;
+            for (int i = 0; i < 400; ++i) {
+                double p = ranker.predict(x, true);
+                sum += p;
+                sq += p * p;
+            }
+            return std::sqrt(sq / 400 - (sum / 400) * (sum / 400));
+        };
+        double before = spread();
+        for (int i = 0; i < 60; ++i) ranker.learn(x, i % 2);
+        double after = spread();
+        QVERIFY(before > 0.08);
+        QVERIFY(after < before / 2);
+    }
+
+    // баланс 0.3: три незнакомых артиста на десять треков, на 4, 7 и 10 месте
+    void rankKeepsTheShareOfNew() {
+        Recommender rec(dir.path());
+        rec.setClock([] { return kStart; });
+        QVariantList liked, candidates;
+        for (int i = 0; i < 10; ++i) {
+            QVariantMap familiar = track("f" + QString::number(i), "Familiar " + QString::number(i));
+            liked.append(familiar);
+            candidates.append(familiar);
+            candidates.append(track("n" + QString::number(i), "New " + QString::number(i)));
+        }
+        rec.setLikes(liked);
+
+        QVariantList ranked = rec.rank(candidates, 10, false);
+        QCOMPARE(ranked.size(), 10);
+        QList<int> freshAt;
+        for (int i = 0; i < ranked.size(); ++i) {
+            if (rec.isNew(ranked[i].toMap())) freshAt.append(i);
+        }
+        QCOMPARE(freshAt, QList<int>({3, 6, 9}));
+
+        rec.setNewShare(0.5);
+        int fresh = 0;
+        for (const QVariant& t : rec.rank(candidates, 10, false)) fresh += rec.isNew(t.toMap());
+        QCOMPARE(fresh, 5);
+    }
+
+    void sameArtistIsSpreadOut() {
+        Recommender rec(dir.path());
+        rec.setClock([] { return kStart; });
+        QVariantList candidates;
+        for (int a = 0; a < 6; ++a) {
+            for (int t = 0; t < 3; ++t) {
+                candidates.append(track(QString("%1-%2").arg(a).arg(t), "Artist " + QString::number(a),
+                                        "Song " + QString::number(t)));
+            }
+        }
+        // первый артист любимый: без правила он занял бы три первых места
+        rec.setLikes({candidates[0], candidates[1], candidates[2]});
+
+        QStringList order = artists(rec.rank(candidates, 10, false));
+        QCOMPARE(order.first(), QString("Artist 0"));
+        for (int i = 1; i < order.size(); ++i) QVERIFY(order[i] != order[i - 1]);
+        for (const QString& a : std::as_const(order)) QVERIFY(order.count(a) <= 2);
+    }
+
+    void skipsPushAnArtistDown() {
+        Recommender rec(dir.path());
+        rec.setClock([] { return kStart; });
+        for (int i = 0; i < 6; ++i) {
+            rec.listened(track("x" + QString::number(i), "Skipped", "S" + QString::number(i)), 8, 200, false);
+            rec.listened(track("y" + QString::number(i), "Kept", "K" + QString::number(i)), 200, 200, true);
+        }
+        QVariantList ranked = rec.rank({track("x9", "Skipped", "Next"), track("y9", "Kept", "Next")}, 2, false);
+        QCOMPARE(artists(ranked), QStringList({"Kept", "Skipped"}));
+        QVERIFY(rec.ranker().mean("a:" + artist("Skipped")) < rec.ranker().mean("a:" + artist("Kept")));
+    }
+
+    // четверть каждой партии ждёт в запасе, повторов нет, старое уходит
+    void waveHoldsTheWorstBack() {
+        Recommender rec(dir.path());
+        rec.setClock([] { return kStart; });
+        auto batch = [](int from) {
+            QVariantList b;
+            for (int i = from; i < from + 8; ++i) b.append(track(QString::number(i), "Artist " + QString::number(i)));
+            return b;
+        };
+
+        QSet<QString> given;
+        QVariantMap first;
+        int total = 0;
+        for (int turn = 0; turn < 5; ++turn) {
+            QVariantList out = rec.nextWave(batch(turn * 8));
+            QCOMPARE(out.size(), 6);
+            if (first.isEmpty()) first = out[0].toMap();
+            for (const QVariant& t : out) given.insert(t.toMap()["id"].toString());
+            total += out.size();
+        }
+        QCOMPARE(given.size(), total);
+        // та же песня в следующей партии в волну уже не вернётся
+        for (const QVariant& t : rec.nextWave({first})) QVERIFY(t.toMap()["id"] != first["id"]);
+
+        rec.resetWave();
+        QCOMPARE(rec.nextWave(batch(100)).size(), 6);
     }
 
     void dislikeOutweighsAFewListens() {

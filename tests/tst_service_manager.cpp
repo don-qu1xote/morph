@@ -194,6 +194,36 @@ private slots:
         QVERIFY(yandexApi.waitFor("/users/5/likes/tracks/remove"));
     }
 
+    // к настройкам Яндекса добавляется своя: доля незнакомых артистов
+    void discoveryOptionJoinsYandexSettings() {
+        yandexApi.on("GET", "/rotor/wave/settings", [](const HttpRequest&) {
+            QJsonObject value{{"name", "Незнакомое"}, {"serializedSeed", "settingDiversity:discover"}};
+            QJsonObject restrictions{
+                {"diversity", QJsonObject{{"name", "Характер"}, {"possibleValues", QJsonArray{value}}}}};
+            return jsonResult(QJsonObject{{"settingRestrictions", restrictions}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("g");
+        QSignalSpy settings(&services, &ServiceManager::waveSettingsReady);
+
+        services.fetchWaveStations();
+        QVERIFY(settings.wait());
+        QVariantList options = settings[0][0].toList();
+        QCOMPARE(options.size(), 2);
+        QCOMPARE(options[0].toMap()["key"].toString(), QString("diversity"));
+        QVariantMap morph = options[1].toMap();
+        QCOMPARE(morph["key"].toString(), QString("morphDiscovery"));
+        QCOMPARE(morph["values"].toList()[2].toMap()["seed"].toString(), QString("morph:new"));
+
+        services.setDiscovery("new");
+        QCOMPARE(services.recommender()->newShare(), 0.5);
+        services.setDiscovery("");
+        QCOMPARE(services.recommender()->newShare(), 0.3);
+    }
+
     // в историю уходит сам трек, хотя ListenTracker знает только id
     void listenIsRecordedWithTheTrack() {
         QFile::remove(PathProvider::getDataPath() + "/listening.jsonl");
@@ -257,6 +287,8 @@ private slots:
         NetworkManager net;
         CacheManager cache(&net);
         ServiceManager services(&net, &cache);
+        // тут проверяется миксер, порядок своей модели не нужен
+        services.setSmartWaves(false);
         QSignalSpy likes(&services, &ServiceManager::likesFetched);
         QSignalSpy wave(&services, &ServiceManager::waveReady);
         services.setYandexToken("d");

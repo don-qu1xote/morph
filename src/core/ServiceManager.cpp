@@ -21,7 +21,6 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     soundcloud = new SoundCloudService(net, this);
     youtube = new YouTubeService(this);
     mixer = new WaveMixer(soundcloud, youtube, this);
-    connect(mixer, &WaveMixer::waveReady, this, &ServiceManager::waveReady);
 
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
@@ -67,6 +66,10 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     m_recommender = new Recommender(PathProvider::getDataPath(), this);
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
+    // порядок волны решает своя модель, миксер только поставляет кандидатов
+    connect(mixer, &WaveMixer::waveReady, this, [this](const QString& name, const QVariantList& tracks) {
+        emit waveReady(name, m_smartWaves ? m_recommender->nextWave(tracks) : tracks);
+    });
 
     connect(this, &ServiceManager::streamUrlReady, this, [this](const QString& trackId, const QString& url) {
         m_direct.remove(trackId);
@@ -81,7 +84,15 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(lyrics, &LyricsService::lyricsReady, this, &ServiceManager::lyricsReady);
     connect(lyrics, &LyricsService::lyricsMissing, this, &ServiceManager::lyricsMissing);
     connect(yandex, &YandexService::stationsReady, this, &ServiceManager::stationsReady);
-    connect(yandex, &YandexService::waveSettingsReady, this, &ServiceManager::waveSettingsReady);
+    connect(yandex, &YandexService::waveSettingsReady, this, [this](QVariantList options) {
+        // своя настройка рядом с яндексовскими: те уходят сидами в сессию,
+        // эта меняет долю незнакомых артистов в ранжировании
+        QVariantList values{QVariantMap{{"name", "Familiar"}, {"seed", "morph:familiar"}},
+                            QVariantMap{{"name", "Balanced"}, {"seed", "morph:balanced"}, {"unspecified", true}},
+                            QVariantMap{{"name", "New"}, {"seed", "morph:new"}}};
+        options.append(QVariantMap{{"key", "morphDiscovery"}, {"name", "morph: familiar or new"}, {"values", values}});
+        emit waveSettingsReady(options);
+    });
     connect(yandex, &YandexService::likesFetched, this, [this](const QVariantList& tracks, const QStringList& allIds) {
         emit likesFetched("Yandex", tracks, allIds);
 
@@ -156,15 +167,22 @@ void ServiceManager::getWave() {
 }
 
 void ServiceManager::startWave(const QStringList& seeds) {
+    m_recommender->resetWave();
     yandex->startWave(seeds);
 }
 
 void ServiceManager::startTrackWave(const QVariantMap& track) {
+    m_recommender->resetWave();
     yandex->startTrackWave(track);
 }
 
 void ServiceManager::startArtistWave(const QString& artistName) {
+    m_recommender->resetWave();
     yandex->startArtistWave(artistName);
+}
+
+void ServiceManager::setDiscovery(const QString& level) {
+    m_recommender->setNewShare(level == "new" ? 0.5 : level == "familiar" ? 0.15 : 0.3);
 }
 
 void ServiceManager::setWaveSettings(const QStringList& settingSeeds) {

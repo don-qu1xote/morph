@@ -64,9 +64,17 @@ Application::Application(QObject *parent) : QObject(parent) {
     auto applyWaveSettings = [this]() {
         services->setMixedWave(settings->getMixedWaveEnabled());
         services->setSyncToYandex(settings->getSyncToYandex());
+        services->setSmartWaves(settings->getSmartWavesEnabled());
+        // morph:new и подобные свои, в сессию Яндекса они не уходят
         QStringList seeds;
-        for (const QVariant& seed : settings->getWaveSettings()) seeds.append(seed.toString());
+        QString discovery;
+        for (const QVariant& value : settings->getWaveSettings()) {
+            QString seed = value.toString();
+            if (seed.startsWith("morph:")) discovery = seed.mid(6);
+            else seeds.append(seed);
+        }
         services->setWaveSettings(seeds);
+        services->setDiscovery(discovery);
     };
     applyWaveSettings();
     connect(settings, &SettingsManager::settingsChanged, services, applyWaveSettings);
