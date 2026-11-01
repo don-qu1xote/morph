@@ -85,7 +85,10 @@ QVariantList YandexService::parseYandexTracks(const QJsonArray& tracks) {
         m_names[track.id] = {track.artist, track.title};
         if (trackObj["available"].toBool(true)) m_unavailable.remove(track.id);
         else m_unavailable.insert(track.id);
-        tracksList.append(track.toVariantMap());
+        QVariantMap map = track.toVariantMap();
+        // по id артиста открывается его страница и ищутся новые релизы
+        if (!artists.isEmpty()) map["artistId"] = artists[0].toObject()["id"].toVariant().toString();
+        tracksList.append(map);
     }
     return tracksList;
 }
@@ -369,6 +372,78 @@ void YandexService::searchTracks(const QString& text, std::function<void(const Q
                                      .toObject()["results"]
                                      .toArray();
             found(reply->error() == QNetworkReply::NoError ? parseYandexTracks(results) : QVariantList());
+        },
+        false);
+}
+
+void YandexService::similarTracks(const QString& trackId, std::function<void(const QVariantList&)> found) {
+    getTracks(QUrl(QString("%1/tracks/%2/similar").arg(m_api, trackId)), "similarTracks", found);
+}
+
+void YandexService::albumTracks(const QString& albumId, std::function<void(const QVariantList&)> found) {
+    QUrl url(QString("%1/albums/%2/with-tracks").arg(m_api, albumId));
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+    net->get(
+        url, yandexHeaders(m_token),
+        [this, found](QNetworkReply* reply) {
+            QJsonArray tracks;
+            // треки альбома разложены по дискам
+            const QJsonArray volumes =
+                QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["volumes"].toArray();
+            for (const auto& volume : volumes) {
+                for (const auto& t : volume.toArray()) tracks.append(t);
+            }
+            found(reply->error() == QNetworkReply::NoError ? parseYandexTracks(tracks) : QVariantList());
+        },
+        false);
+}
+
+void YandexService::artistAlbums(const QString& artistId, std::function<void(const QVariantList&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+    QUrl url(QString("%1/artists/%2/direct-albums").arg(m_api, artistId));
+    url.setQuery("sort-by=year&page=0&page-size=5");
+    net->get(
+        url, yandexHeaders(m_token),
+        [found](QNetworkReply* reply) {
+            QVariantList albums;
+            const QJsonArray list =
+                QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()["albums"].toArray();
+            for (const auto& a : list) albums.append(parseAlbum(a.toObject()));
+            found(reply->error() == QNetworkReply::NoError ? albums : QVariantList());
+        },
+        false);
+}
+
+// альбом для карточек: id, название, год, дата выхода, обложка, сколько треков
+QVariantMap YandexService::parseAlbum(const QJsonObject& album) {
+    QString cover = album["coverUri"].toString();
+    if (!cover.isEmpty()) cover = "https://" + cover.replace("%%", "400x400");
+    return {{"id", album["id"].toVariant().toString()},
+            {"title", album["title"].toString()},
+            {"year", album["year"].toInt()},
+            {"releaseDate", album["releaseDate"].toString()},
+            {"type", album["type"].toString()},
+            {"trackCount", album["trackCount"].toInt()},
+            {"coverUrl", cover}};
+}
+
+void YandexService::getTracks(const QUrl& url, const QString& field, std::function<void(const QVariantList&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+    net->get(
+        url, yandexHeaders(m_token),
+        [this, field, found](QNetworkReply* reply) {
+            QJsonArray tracks =
+                QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject()[field].toArray();
+            found(reply->error() == QNetworkReply::NoError ? parseYandexTracks(tracks) : QVariantList());
         },
         false);
 }

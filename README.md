@@ -30,6 +30,7 @@
 - **MAIN, One Library for All Services**: Likes from Yandex, SoundCloud and YouTube become one list with one entry per song. Each song plays from the most reliable service that has it, and if one service drops it, another version plays instead. Turn on **Sync to Yandex** in Settings to send likes and listens from SoundCloud and YouTube to the same songs on Yandex, so My Vibe learns from them too.
 - **Text List Import**: Paste a path to a `.txt` file with `Artist - Title` lines into the import field to get a playlist played through search.
 - **Top Charts**: Browse and play the top tracks from Yandex Music with a clean, dual-column ranked layout.
+- **Playlists by morph**: Daily Mixes built from the artists you play together, Discover Weekly with artists new to you (refreshed on Mondays), Release Radar with fresh releases from your favourites, On Repeat and Rediscover for old likes you haven't heard in a while. They come first in For You and use your listening on every service.
 - **For You**: Yandex personal playlists (Playlist of the Day, Premiere, Deja Vu, Stash) and fresh editorial picks on the home screen, next to SoundCloud daily mixes.
 - **Artist Profiles**: Browse detailed artist profiles displaying a biography, high-resolution avatar, list of albums, and tracks directly from the player.
 - **Advanced Playlist Management**:

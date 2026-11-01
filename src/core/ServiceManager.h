@@ -14,6 +14,7 @@
 #include "../services/LyricsService.h"
 #include "FallbackFinder.h"
 #include "Library.h"
+#include "MorphMixes.h"
 #include "Recommender.h"
 #include "WaveMixer.h"
 
@@ -99,6 +100,7 @@ private:
     bool m_smartWaves = true;
     Library* m_library;
     Recommender* m_recommender;
+    MorphMixes* m_mixes;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id
     QHash<QString, QVariantMap> m_started;
     NetworkManager* net;

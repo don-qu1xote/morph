@@ -66,6 +66,14 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
 
     m_recommender = new Recommender(PathProvider::getDataPath(), this);
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
+    m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
+    connect(m_mixes, &MorphMixes::ready, this,
+            [this](const QString& name, const QString& coverUrl, const QVariantList& tracks) {
+                if (!coverUrl.isEmpty()) this->cache->cacheCover(coverUrl);
+                emit playlistImported(name, coverUrl, tracks);
+            });
+    connect(m_mixes, &MorphMixes::failed, this, &ServiceManager::errorOccurred);
+
     // порядок волны решает своя модель, миксер только поставляет кандидатов
     connect(mixer, &WaveMixer::waveReady, this, [this](const QString& name, const QVariantList& tracks) {
         emit waveReady(name, m_smartWaves ? m_recommender->nextWave(tracks) : tracks);
@@ -199,6 +207,13 @@ void ServiceManager::fetchLyrics(const QVariantMap& track) {
 
 void ServiceManager::getDailyMixes() {
     for (const auto& [name, s] : m_services) s->getDailyMixes();
+    // свои миксы считаются на месте, треки по клику через importPlaylist
+    QVariantList cards = m_mixes->cards();
+    for (const QVariant& c : std::as_const(cards)) {
+        QString coverUrl = c.toMap()["coverUrl"].toString();
+        if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
+    }
+    emit dailyMixesReady("morph", cards);
 }
 
 void ServiceManager::resolve(const QString& serviceName, const QString& trackId) {
@@ -362,7 +377,9 @@ void ServiceManager::importPlaylist(const QString& url) {
         return;
     }
 
-    if (url.contains("yandex")) {
+    if (url.startsWith("morph:")) {
+        m_mixes->build(url);
+    } else if (url.contains("yandex")) {
         yandex->importPlaylist(url);
     } else if (url.contains("soundcloud")) {
         soundcloud->importPlaylist(url);

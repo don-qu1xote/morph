@@ -1253,6 +1253,8 @@ ApplicationWindow {
                                                                 onStatusChanged: if (status === Image.Ready && source.toString().startsWith("http")) MorphCache.cacheCover(source)
                                                             }
                                                             Text { anchors.centerIn: parent; text: "♪"; color: systemTheme.card; font.family: mainFont.name; font.pixelSize: 40; visible: mixImage.status !== Image.Ready }
+                                                            // название поверх обложки: у своих миксов обложка это обложка трека
+                                                            MixCaption { anchors.fill: parent; title: model.name || ""; subtitle: model.subtitle || ""; fontFamily: mainFont.name; radius: 15 }
                                                             Rectangle {                                                                anchors.fill: parent; color: "#aa000000"; visible: mixMouseArea.containsMouse; radius: 15
                                                                 Image {
                                                                     anchors.centerIn: parent; source: "qrc:/assets/play.svg"; Layout.preferredWidth: 40; Layout.preferredHeight: 40
@@ -3486,13 +3488,18 @@ ApplicationWindow {
             }
         }
         function onDailyMixesReady(serviceName, results) {
-            // миксы приходят от каждого сервиса отдельно: меняем только его карточки,
-            // яндексовские впереди
+            // миксы приходят от каждого сервиса отдельно: меняем только его карточки.
+            // Впереди свои миксы, за ними яндексовские, остальные в конце
             for (var j = dailyMixesModel.count - 1; j >= 0; j--) {
                 if (dailyMixesModel.get(j).service === serviceName) dailyMixesModel.remove(j)
             }
+            var morphCount = 0
+            for (var k = 0; k < dailyMixesModel.count; k++) {
+                if (dailyMixesModel.get(k).service === "morph") morphCount++
+            }
             for (var i = 0; i < results.length; i++) {
-                if (serviceName === "Yandex") dailyMixesModel.insert(i, results[i])
+                if (serviceName === "morph") dailyMixesModel.insert(i, results[i])
+                else if (serviceName === "Yandex") dailyMixesModel.insert(morphCount + i, results[i])
                 else dailyMixesModel.append(results[i])
             }
         }

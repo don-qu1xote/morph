@@ -70,6 +70,7 @@ add_library(morph_core STATIC
     src/core/TasteProfile.h src/core/TasteProfile.cpp
     src/core/Ranker.h src/core/Ranker.cpp
     src/core/Recommender.h src/core/Recommender.cpp
+    src/core/MorphMixes.h src/core/MorphMixes.cpp
     src/settings/SettingsManager.h src/settings/SettingsManager.cpp
     src/settings/PlaylistManager.h src/settings/PlaylistManager.cpp
     src/settings/TokenManager.h src/settings/TokenManager.cpp

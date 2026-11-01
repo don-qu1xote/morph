@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QMap>
 #include <QUrlQuery>
+#include <functional>
 
 class SoundCloudService : public BaseService {
     Q_OBJECT
@@ -29,6 +30,8 @@ public:
     void streamAs(const QString& soundcloudId, const QString& trackId);
     // похожее на трек из запроса, ответ в relatedReady
     void relatedTo(const QString& query, int count);
+    // то же с ответом в done: у плейлистов свои запросы, миксер их не должен видеть
+    void relatedTo(const QString& query, int count, std::function<void(const QVariantList&)> done);
     bool hasToken() const { return !m_token.isEmpty(); }
 
 signals:

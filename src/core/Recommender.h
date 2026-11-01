@@ -28,8 +28,9 @@ public:
 
     // Лучшие count из candidates по модели «дослушаешь ли». Доля треков
     // незнакомых артистов держится около newShare, один артист не встаёт два
-    // раза подряд и не чаще двух раз на десять треков. explore: с разведкой
-    QVariantList rank(const QVariantList& candidates, int count, bool explore = true);
+    // раза подряд и не чаще двух раз на десять треков. explore: с разведкой,
+    // newShare: своя доля нового вместо общей настройки
+    QVariantList rank(const QVariantList& candidates, int count, bool explore = true, double newShare = -1);
     // 0.15 больше привычного, 0.3 баланс, 0.5 больше нового
     void setNewShare(double share) { m_newShare = share; }
     double newShare() const { return m_newShare; }

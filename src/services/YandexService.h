@@ -4,6 +4,7 @@
 #include "BaseService.h"
 #include "../network/NetworkManager.h"
 #include <QHash>
+#include <QJsonObject>
 #include <QSet>
 #include <QStringList>
 #include <functional>
@@ -28,6 +29,12 @@ public:
     void streamAs(const QString& yandexId, const QString& trackId);
     // треки по запросу; при ошибке пустой список, ответ приходит всегда
     void searchTracks(const QString& text, std::function<void(const QVariantList&)> found);
+    // похожие на трек, как блок «Похожие треки» в приложении Яндекса
+    void similarTracks(const QString& trackId, std::function<void(const QVariantList&)> found);
+    // последние альбомы артиста, новые первыми
+    void artistAlbums(const QString& artistId, std::function<void(const QVariantList&)> found);
+    void albumTracks(const QString& albumId, std::function<void(const QVariantList&)> found);
+    static QVariantMap parseAlbum(const QJsonObject& album);
     void setLiked(const QString& trackId, bool liked);
     void dislike(const QString& trackId);
     void fetchLikes();
@@ -69,6 +76,8 @@ private:
     void resetWaveSession();
     QStringList sessionSeeds() const;
     void findFirst(const QString& type, const QString& text, std::function<void(const QString&)> found);
+    // GET по адресу, треки из result[field]
+    void getTracks(const QUrl& url, const QString& field, std::function<void(const QVariantList&)> found);
     void fetchDashboard(QVariantList stations);
     void handleWaveBatch(const QJsonObject& result);
     void getWaveFromStation();

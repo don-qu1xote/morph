@@ -164,6 +164,27 @@ flowchart LR
     K --> R
 ```
 
+## Плейлисты от morph
+
+`MorphMixes` собирает Daily Mix, Discover Weekly, Release Radar, On Repeat и
+Rediscover ([ADR-0014](adr/0014-morph-playlists.md)). Карточки уходят в
+`dailyMixesReady` с сервисом `morph` вместе с миксами сервисов, а клик по
+карточке зовёт `importPlaylist("morph:...")`.
+
+```mermaid
+flowchart LR
+    H[история] --> G["группы артистов: сессии и лайки подряд"]
+    L[MAIN] --> G
+    G --> D[Daily Mix]
+    Y["Яндекс: similar, альбомы артистов"] --> D
+    Y --> W[Discover Weekly]
+    Y --> R[Release Radar]
+    S["SoundCloud: related"] --> D
+    S --> W
+    D & W -->|rank| Q[playlistImported]
+    R --> Q
+```
+
 ## Интерфейс
 
 Каждая из трёх тем (`style.qml`, `style_white.qml`, `auto_theme.qml`) это

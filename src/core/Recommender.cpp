@@ -156,7 +156,8 @@ Ranker::Features Recommender::features(const QVariantMap& track) const {
     return x;
 }
 
-QVariantList Recommender::rank(const QVariantList& candidates, int count, bool explore) {
+QVariantList Recommender::rank(const QVariantList& candidates, int count, bool explore, double newShare) {
+    double share = newShare >= 0 ? newShare : m_newShare;
     struct Scored {
         QVariantMap track;
         QString artist;
@@ -180,7 +181,7 @@ QVariantList Recommender::rank(const QVariantList& candidates, int count, bool e
 
     while (out.size() < count && !pool.isEmpty()) {
         // сколько незнакомых должно быть к этому месту: 0.3 даёт по три на десять
-        bool wantFresh = fresh < int(std::floor(m_newShare * (out.size() + 1)));
+        bool wantFresh = fresh < int(std::floor(share * (out.size() + 1)));
         int pick = -1;
         // по порядку: нужный вид и разнообразие, любой вид и разнообразие, что есть
         for (int pass = 0; pass < 3 && pick < 0; ++pass) {

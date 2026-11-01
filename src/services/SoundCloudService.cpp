@@ -370,8 +370,12 @@ void SoundCloudService::searchCandidates(const QString& query, const QString& tr
 // Для смешанной волны: находим трек по запросу и берём его related, как блок
 // «Related tracks» на сайте
 void SoundCloudService::relatedTo(const QString& query, int count) {
+    relatedTo(query, count, [this](const QVariantList& tracks) { emit relatedReady(tracks); });
+}
+
+void SoundCloudService::relatedTo(const QString& query, int count, std::function<void(const QVariantList&)> done) {
     if (m_token.isEmpty()) {
-        emit relatedReady({});
+        done({});
         return;
     }
 
@@ -384,10 +388,10 @@ void SoundCloudService::relatedTo(const QString& query, int count) {
 
     net->get(
         url, authHeaders(),
-        [this, count](QNetworkReply* reply) {
+        [this, count, done](QNetworkReply* reply) {
             QJsonArray found = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
             if (reply->error() != QNetworkReply::NoError || found.isEmpty()) {
-                emit relatedReady({});
+                done({});
                 return;
             }
 
@@ -400,9 +404,9 @@ void SoundCloudService::relatedTo(const QString& query, int count) {
 
             net->get(
                 relatedUrl, authHeaders(),
-                [this](QNetworkReply* reply) {
+                [this, done](QNetworkReply* reply) {
                     QJsonArray collection = QJsonDocument::fromJson(reply->readAll()).object()["collection"].toArray();
-                    emit relatedReady(parseSoundCloudTracks(playableOnly(collection)));
+                    done(parseSoundCloudTracks(playableOnly(collection)));
                 },
                 false);
         },
