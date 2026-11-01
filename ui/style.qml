@@ -495,6 +495,42 @@ ApplicationWindow {
         loadedTracksCount = limit
     }
 
+    // плейлист, как он пришёл, до поиска и сортировки в строке над треками
+    property var playlistSource: []
+    onCurrentPlaylistChanged: resetArrange()
+
+    function arrangePlaylist() {
+        if (playlistSource.length === 0) playlistSource = fullPlaylistTracks
+        fullPlaylistTracks = MorphServices.arrangeTracks(playlistSource, playlistToolbar.filter, playlistToolbar.sort)
+        libraryModel.clear()
+        loadedTracksCount = 0
+        loadNextChunk()
+        // текущий трек мог уехать на другое место или выпасть из поиска
+        currentTrackIndex = -1
+        for (var i = 0; currentTrack && i < fullPlaylistTracks.length; i++) {
+            if (fullPlaylistTracks[i].id === currentTrack.id) {
+                currentTrackIndex = i
+                break
+            }
+        }
+    }
+
+    // список пришёл заново: поиск и сортировка от прошлого не к месту
+    function resetArrange() {
+        playlistSource = []
+        playlistToolbar.reset()
+    }
+
+    function startPlaylistWave() {
+        var tracks = playlistSource.length > 0 ? playlistSource : fullPlaylistTracks
+        if (tracks.length === 0) return
+        var name = currentPlaylist === "" ? "MAIN" : currentPlaylist
+        activeWave = "playlist:" + name
+        currentPlaylist = ""
+        MorphServices.startPlaylistWave(tracks)
+        showToast(name.toUpperCase() + " WAVE")
+    }
+
     // страница артиста: сразу то, что известно по треку, остальное придёт в onArtistReady
     function showArtistProfile(artistName, currentTrackObj) {
         var name = artistName ? artistName.trim() : ""
@@ -1735,6 +1771,18 @@ function playTrack(track, index) {
                                             id: libraryTracksColumn
                                             spacing: 20
                                             Item { Layout.preferredHeight: (currentView === "library" && librarySubView === "tracks") ? 20 : 0 }
+                                            PlaylistToolbar {
+                                                id: playlistToolbar
+                                                Layout.fillWidth: true
+                                                visible: currentPlaylist !== "MY_VIBE" && total > 0
+                                                count: fullPlaylistTracks.length
+                                                total: playlistSource.length > 0 ? playlistSource.length : fullPlaylistTracks.length
+                                                textColor: "white"; subtextColor: "#888888"; fieldColor: "#1a1a1a"
+                                                borderColor: "#333333"; accentColor: "#b57339"; accentTextColor: "black"
+                                                fontFamily: mainFont.name
+                                                onArrangeChanged: arrangePlaylist()
+                                                onWaveWanted: startPlaylistWave()
+                                            }
                                             Rectangle {
                                                 Layout.fillWidth: true; Layout.preferredHeight: libraryTracksList.contentHeight + 20; color: "#1a1a1a"
                                                 radius: 12
@@ -3208,7 +3256,7 @@ function playTrack(track, index) {
                                                     if(currentTrack) {
                                                         var isL = MorphSettings.isLiked(currentTrack.id)
                                                         MorphSettings.toggleLike(currentTrack)
-                                                        showToast(isL ? "Removed from Liked" : "Added to Liked")
+                                                        showToast(isL ? "Removed from MAIN" : "Added to MAIN")
                                                     }
                                                 }
                                             }
@@ -3529,6 +3577,19 @@ function playTrack(track, index) {
                         width: 6; height: 6; radius: 3; color: "#b57339"
                         visible: trackDelegateRoot.isCachedTrack
                     }
+                    // волна по этому треку, видна при наведении на строку
+                    Image {
+                        Layout.preferredWidth: 16; Layout.preferredHeight: 16; sourceSize: Qt.size(32, 32)
+                        source: "qrc:/assets/waveform.svg"
+                        opacity: trackMouseArea.containsMouse || rowWaveMouse.containsMouse ? 1 : 0
+                        layer.enabled: true; layer.effect: ColorOverlay { color: rowWaveMouse.containsMouse ? "#b57339" : "#888" }
+                        MouseArea {
+                            id: rowWaveMouse
+                            anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: startTrackWave({ "id": model.id, "title": model.title, "artist": model.artist, "album": model.album || "",
+                                                       "coverUrl": model.coverUrl || "", "service": model.service || "Yandex", "durationMs": model.durationMs || 0 })
+                        }
+                    }
                     Text {
                         text: formatTime(durationMs || 0)
                         color: "#666"; font.family: mainFont.name; font.pixelSize: 12; visible: (durationMs || 0) > 0
@@ -3566,7 +3627,7 @@ function playTrack(track, index) {
                                 }
                                 var isL = MorphSettings.isLiked(cleanTrack.id)
                                 MorphSettings.toggleLike(cleanTrack)
-                                showToast(isL ? "Removed from Liked" : "Added to Liked")
+                                showToast(isL ? "Removed from MAIN" : "Added to MAIN")
                                 }
                                 }
                                 }
@@ -4024,6 +4085,7 @@ function playTrack(track, index) {
                     temp.push(item)
                 }
                 fullPlaylistTracks = temp
+                resetArrange()
                 
                 if (currentView === "library") {
                     libraryModel.clear()
@@ -4051,6 +4113,7 @@ function playTrack(track, index) {
                     }
                     fullPlaylistTracks = temp
                     loadedTracksCount = temp.length
+                    resetArrange()
                 }
             }
         }

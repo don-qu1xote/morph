@@ -37,6 +37,9 @@
   - Create, rename, and delete custom playlists.
   - Set custom cover images using external URLs (Imgur, Pinterest, etc.).
   - Easily add tracks from search, charts, or history directly into your playlists.
+  - Search inside a playlist and sort it by title, artist, length or how often you play each track.
+  - **Playlist Wave**: an endless wave of tracks similar to the playlist, mixed with a few of its own, ordered by Personal Ranking.
+  - Hover a track row to start a wave from that track.
 - **Queue & Shuffle**: Play next, add to queue and a side panel with what plays now, your queue and the rest of the list; shuffle plays every track once per round, and Previous walks back through what actually played.
 - **Synced Lyrics**: Lyrics from Yandex, or from LRCLIB for tracks Yandex no longer has; the current line follows the music and a click on a line jumps there.
 - **Autoplay**: When a playlist or album ends, a wave by its last track keeps the music going. Turn it off in Settings.

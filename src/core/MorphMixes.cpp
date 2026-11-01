@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRandomGenerator>
 #include <QSet>
 #include <algorithm>
 #include <memory>
@@ -88,6 +89,34 @@ void MorphMixes::build(const QString& id) {
     else if (name == "releases") buildReleaseRadar();
     else if (name.startsWith("daily")) buildDailyMix(name.mid(5).toInt() - 1);
     else emit failed("Unknown morph playlist: " + id);
+}
+
+void MorphMixes::startSeeded(const QVariantList& tracks) {
+    ++m_seedGeneration;
+    m_seeds = tracks;
+    // каждый запуск начинает с другого места плейлиста
+    std::shuffle(m_seeds.begin(), m_seeds.end(), *QRandomGenerator::global());
+    m_seedPos = 0;
+    m_seedBusy = false;
+    nextSeeded();
+}
+
+void MorphMixes::nextSeeded() {
+    if (m_seedBusy || m_seeds.isEmpty()) return;
+    m_seedBusy = true;
+
+    QVariantList seedList;
+    QVariantList own;
+    for (int i = 0; i < 3; ++i) seedList.append(m_seeds[(m_seedPos + i) % m_seeds.size()]);
+    for (int i = 3; i < 5; ++i) own.append(m_seeds[(m_seedPos + i) % m_seeds.size()]);
+    m_seedPos = (m_seedPos + 5) % m_seeds.size();
+
+    int generation = m_seedGeneration;
+    similarTo(seedList, 1, [this, own, generation](const QVariantList& similar) {
+        if (generation != m_seedGeneration) return;
+        m_seedBusy = false;
+        emit seededBatch(own + similar);
+    });
 }
 
 // Песни, которые ты знаешь: MAIN и дослушанное из истории, по одной на песню

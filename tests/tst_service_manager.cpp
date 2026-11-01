@@ -319,6 +319,69 @@ private slots:
         QCOMPARE(popular[0].toMap()["id"].toString(), QString("1"));
     }
 
+    void playlistSearchAndSort() {
+        QFile::remove(PathProvider::getDataPath() + "/listening.jsonl");
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        auto t = [](const QString& id, const QString& artist, const QString& title, int seconds) {
+            return QVariant(QVariantMap{{"id", id},
+                                        {"service", "Yandex"},
+                                        {"artist", artist},
+                                        {"title", title},
+                                        {"durationMs", seconds * 1000}});
+        };
+        QVariantList list{t("1", "Ёлка", "Трек 10", 200), t("2", "Zamay", "Трек 2", 150),
+                          t("3", "Zamay", "Неошансон", 187)};
+        auto ids = [](const QVariantList& tracks) {
+            QStringList out;
+            for (const QVariant& v : tracks) out.append(v.toMap()["id"].toString());
+            return out;
+        };
+
+        QCOMPARE(ids(services.arrangeTracks(list, "", "custom")), QStringList({"1", "2", "3"}));
+        QCOMPARE(ids(services.arrangeTracks(list, "zamay трек", "custom")), QStringList({"2"}));
+        // ё ищется и через е
+        QCOMPARE(ids(services.arrangeTracks(list, "елка", "custom")), QStringList({"1"}));
+        QCOMPARE(ids(services.arrangeTracks(list, "", "title")).first(), QString("3"));
+        QCOMPARE(ids(services.arrangeTracks(list, "", "artist")).last(), QString("1"));
+        QCOMPARE(ids(services.arrangeTracks(list, "", "duration")), QStringList({"2", "3", "1"}));
+
+        services.nowPlaying(list[2].toMap());
+        services.reportListen("Yandex", "3", "", 187, 187, true);
+        QCOMPARE(ids(services.arrangeTracks(list, "", "plays")).first(), QString("3"));
+    }
+
+    // волна по плейлисту: похожее на его треки, дальше getWave просит её же
+    void playlistWaveKeepsGoing() {
+        yandexApi.on("GET", "/tracks/41/similar", [](const HttpRequest&) {
+            QJsonArray similar;
+            for (int i = 0; i < 6; ++i)
+                similar.append(
+                    QJsonObject{{"id", 700 + i},
+                                {"title", "Similar " + QString::number(i)},
+                                {"artists", QJsonArray{QJsonObject{{"name", "Near " + QString::number(i)}}}}});
+            return jsonResult(QJsonObject{{"similarTracks", similar}});
+        });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setYandexToken("j");
+        QSignalSpy wave(&services, &ServiceManager::waveReady);
+
+        QVariantMap seed{{"id", "41"}, {"service", "Yandex"}, {"artist", "Seed"}, {"title", "One"}};
+        services.startPlaylistWave({seed});
+        QVERIFY(wave.wait());
+        QCOMPARE(wave[0][0].toString(), QString("morph"));
+        QVERIFY(!wave[0][1].toList().isEmpty());
+
+        int asked = yandexApi.requestsTo("/tracks/41/similar").size();
+        services.getWave();
+        QVERIFY(yandexApi.waitFor("/tracks/41/similar", asked + 1));
+        QVERIFY(yandexApi.requestsTo("/rotor/session/new").isEmpty());
+    }
+
     // в историю уходит сам трек, хотя ListenTracker знает только id
     void listenIsRecordedWithTheTrack() {
         QFile::remove(PathProvider::getDataPath() + "/listening.jsonl");

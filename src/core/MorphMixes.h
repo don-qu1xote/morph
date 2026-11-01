@@ -31,6 +31,12 @@ public:
     // id вида morph:onrepeat; ответ в ready или failed
     void build(const QString& id);
 
+    // Волна по списку треков, например по плейлисту: похожее на три случайных
+    // трека из него и пара его собственных. Партии в seededBatch, следующую
+    // просит nextSeeded, как getWave у Яндекса
+    void startSeeded(const QVariantList& tracks);
+    void nextSeeded();
+
     // Группы артистов для Daily Mix. Артисты рядом, если звучали в одной
     // сессии (без перерыва в полчаса) или лайкнуты друг за другом. Дальше
     // распространение меток: каждый берёт метку, у которой больше всего общего
@@ -40,6 +46,7 @@ public:
 signals:
     void ready(const QString& name, const QString& coverUrl, const QVariantList& tracks);
     void failed(const QString& message);
+    void seededBatch(const QVariantList& tracks);
 
 private:
     using Tracks = std::function<void(const QVariantList&)>;
@@ -66,6 +73,12 @@ private:
     YandexService* yandex;
     SoundCloudService* soundcloud;
     QString m_discoverPath;
+
+    QVariantList m_seeds;
+    int m_seedPos = 0;
+    bool m_seedBusy = false;
+    // ответ по старому списку после нового старта отбрасывается
+    int m_seedGeneration = 0;
 };
 
 #endif

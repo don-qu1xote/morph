@@ -42,6 +42,11 @@ public slots:
     void fetchArtist(const QString& name, const QVariantMap& track);
     // альбом со страницы артиста открывается как плейлист
     void openAlbum(const QVariantMap& album);
+    // волна по трекам плейлиста; дальше getWave просит её же, пока не начнётся другая
+    void startPlaylistWave(const QVariantList& tracks);
+    // Поиск и сортировка внутри плейлиста. Все слова filter должны найтись в
+    // названии, артисте или альбоме. sort: custom, title, artist, plays, duration
+    QVariantList arrangeTracks(const QVariantList& tracks, const QString& filter, const QString& sort) const;
     void getDailyMixes();
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
@@ -106,6 +111,7 @@ private:
     int m_linksThisRun = 0;
     bool m_syncToYandex = false;
     bool m_smartWaves = true;
+    bool m_seededWave = false;
     Library* m_library;
     Recommender* m_recommender;
     MorphMixes* m_mixes;

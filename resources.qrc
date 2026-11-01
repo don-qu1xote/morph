@@ -8,6 +8,7 @@
     <file>ui/components/SidePanel.qml</file>
     <file>ui/components/MixCaption.qml</file>
     <file>ui/components/ArtistPage.qml</file>
+    <file>ui/components/PlaylistToolbar.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
     <file>assets/cog.svg</file>
@@ -19,6 +20,8 @@
     <file>assets/shuffle-variant.svg</file>
     <file>assets/sync.svg</file>
     <file>assets/creation.svg</file>
+    <file>assets/waveform.svg</file>
+    <file>assets/sort-variant.svg</file>
     <file>assets/playlist-music.svg</file>
     <file>assets/microphone-variant.svg</file>
     <file>assets/magnify.svg</file>

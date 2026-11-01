@@ -1,6 +1,7 @@
 #include "ServiceManager.h"
 #include "../services/TrackData.h"
 #include "TrackMatch.h"
+#include <QCollator>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -73,6 +74,9 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
                 emit playlistImported(name, coverUrl, tracks);
             });
     connect(m_mixes, &MorphMixes::failed, this, &ServiceManager::errorOccurred);
+    connect(m_mixes, &MorphMixes::seededBatch, this, [this](const QVariantList& tracks) {
+        emit waveReady("morph", m_smartWaves ? m_recommender->nextWave(tracks) : tracks);
+    });
 
     // порядок волны решает своя модель, миксер только поставляет кандидатов
     connect(mixer, &WaveMixer::waveReady, this, [this](const QString& name, const QVariantList& tracks) {
@@ -171,22 +175,70 @@ void ServiceManager::getCharts() {
 }
 
 void ServiceManager::getWave() {
+    if (m_seededWave) {
+        m_mixes->nextSeeded();
+        return;
+    }
     for (const auto& [name, s] : m_services) s->getWave();
 }
 
 void ServiceManager::startWave(const QStringList& seeds) {
+    m_seededWave = false;
     m_recommender->resetWave();
     yandex->startWave(seeds);
 }
 
 void ServiceManager::startTrackWave(const QVariantMap& track) {
+    m_seededWave = false;
     m_recommender->resetWave();
     yandex->startTrackWave(track);
 }
 
 void ServiceManager::startArtistWave(const QString& artistName) {
+    m_seededWave = false;
     m_recommender->resetWave();
     yandex->startArtistWave(artistName);
+}
+
+void ServiceManager::startPlaylistWave(const QVariantList& tracks) {
+    if (tracks.isEmpty()) return;
+    m_seededWave = true;
+    m_recommender->resetWave();
+    m_mixes->startSeeded(tracks);
+}
+
+QVariantList ServiceManager::arrangeTracks(const QVariantList& tracks, const QString& filter,
+                                           const QString& sort) const {
+    auto normalized = [](QString text) { return text.toLower().replace(u'ё', u'е'); };
+    const QStringList words = normalized(filter).split(' ', Qt::SkipEmptyParts);
+    QVariantList out;
+    for (const QVariant& v : tracks) {
+        QVariantMap t = v.toMap();
+        QString where = normalized(t["title"].toString() + " " + t["artist"].toString() + " " + t["album"].toString());
+        if (std::all_of(words.cbegin(), words.cend(), [&where](const QString& w) { return where.contains(w); }))
+            out.append(v);
+    }
+
+    if (sort == "plays") {
+        const auto songs = m_recommender->history().songs();
+        auto plays = [&songs](const QVariant& t) { return songs.value(TrackMatch::songKey(t.toMap())).plays; };
+        std::stable_sort(out.begin(), out.end(),
+                         [&plays](const QVariant& a, const QVariant& b) { return plays(a) > plays(b); });
+    } else if (sort == "duration") {
+        std::stable_sort(out.begin(), out.end(), [](const QVariant& a, const QVariant& b) {
+            return a.toMap()["durationMs"].toLongLong() < b.toMap()["durationMs"].toLongLong();
+        });
+    } else if (sort == "title" || sort == "artist") {
+        // по алфавиту, а где системная сортировка умеет (на маке, с ICU), цифры как
+        // числа: «Трек 2» перед «Трек 10»
+        QCollator collator;
+        collator.setCaseSensitivity(Qt::CaseInsensitive);
+        collator.setNumericMode(true);
+        std::stable_sort(out.begin(), out.end(), [&collator, &sort](const QVariant& a, const QVariant& b) {
+            return collator.compare(a.toMap()[sort].toString(), b.toMap()[sort].toString()) < 0;
+        });
+    }
+    return out;
 }
 
 void ServiceManager::setDiscovery(const QString& level) {
