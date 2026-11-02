@@ -84,6 +84,34 @@ void PlaylistManager::mergeServiceLikes(const QString& service, const QVariantLi
     emit likesChanged();
 }
 
+int PlaylistManager::importLikes(const QVariantList& tracks, bool atTop) {
+    QJsonArray likes = (*m_data)["likes"].toArray();
+    QSet<QString> known;
+    for (const auto& v : std::as_const(likes)) {
+        QVariantMap t = v.toObject().toVariantMap();
+        known.insert(t["id"].toString());
+        known.insert(TrackMatch::songKey(t));
+    }
+
+    QJsonArray added;
+    for (const QVariant& v : tracks) {
+        QVariantMap t = v.toMap();
+        QString key = TrackMatch::songKey(t);
+        // та же песня уже в MAIN с другой площадки, второй лайк ей ни к чему
+        if (known.contains(t["id"].toString()) || known.contains(key)) continue;
+        known.insert(key);
+        added.append(QJsonObject::fromVariantMap(t));
+    }
+    if (added.isEmpty()) return 0;
+
+    QJsonArray merged = atTop ? added : likes;
+    for (const auto& v : atTop ? std::as_const(likes) : std::as_const(added)) merged.append(v);
+    (*m_data)["likes"] = merged;
+    updateLikedSet();
+    emit likesChanged();
+    return added.size();
+}
+
 void PlaylistManager::createPlaylist(const QString& name, const QString& coverUrl) {
     QJsonObject playlists = (*m_data)["playlists"].toObject();
     if (!playlists.contains(name)) {

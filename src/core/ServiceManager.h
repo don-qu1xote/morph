@@ -66,6 +66,8 @@ public slots:
     void setMixedWave(bool enabled);
     void setSyncToYandex(bool enabled) { m_syncToYandex = enabled; }
     void setSyncToSoundCloud(bool enabled);
+    // понравившееся в YouTube Music в MAIN, через cookies браузера; ответ в likesImported
+    void importYouTubeLikes(const QString& browser);
     void setSmartWaves(bool enabled) { m_smartWaves = enabled; }
     // familiar, balanced или new: сколько незнакомых артистов в волнах и миксах
     void setDiscovery(const QString& level);
@@ -84,6 +86,10 @@ signals:
     void bitrateReady(const QString& trackId, int bitrate);
     void trackStarted(const QString& serviceName, const QString& trackId, const QString& albumId);
     void likesFetched(const QString& serviceName, const QVariantList& tracks, const QStringList& allIds);
+    // лайки с площадки, куда morph не пишет: только добавить в MAIN
+    void likesImported(const QString& serviceName, const QVariantList& tracks);
+    // сообщение для интерфейса, не ошибка
+    void notice(const QString& message);
     // трек играет с замены: service, id, artist, title, webUrl, index и total
     void fallbackChosen(const QString& trackId, const QVariantMap& source);
     void stationsReady(const QVariantList& stations);

@@ -33,6 +33,8 @@ public slots:
     bool isLiked(const QString& trackId);
     QVariantList getLikedTracks();
     void mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds);
+    // лайки с площадки, куда писать нельзя: только добавляются, см. PlaylistManager::importLikes
+    void importServiceLikes(const QString& service, const QVariantList& tracks);
 
     void createPlaylist(const QString& name, const QString& coverUrl = "");
     void createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks);
@@ -87,6 +89,9 @@ public slots:
     // песни MAIN лайками в аккаунт SoundCloud, чтобы его рекомендации учились на них
     void setSyncToSoundCloud(bool enabled);
     bool getSyncToSoundCloud();
+    // из какого браузера yt-dlp читает cookies для лайков YouTube; пусто, если выключено
+    void setYouTubeLikesBrowser(const QString& browser);
+    QString getYouTubeLikesBrowser();
     // настройки Моей волны: ключ (diversity, moodEnergy, language) и сид значения
     void setWaveSetting(const QString& key, const QString& seed);
     QVariantMap getWaveSettings();

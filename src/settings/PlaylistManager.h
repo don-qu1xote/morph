@@ -19,6 +19,9 @@ public:
     bool isLiked(const QString& trackId);
     QVariantList getLikedTracks();
     void mergeServiceLikes(const QString& service, const QVariantList& tracks, const QStringList& allIds);
+    // только добавить: для площадок, куда morph писать не может. atTop: новые
+    // лайки наверх, иначе в конец (первый импорт старых лайков). Сколько добавлено
+    int importLikes(const QVariantList& tracks, bool atTop);
 
     void createPlaylist(const QString& name, const QString& coverUrl = "");
     void createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks);

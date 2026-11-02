@@ -100,6 +100,14 @@ void SettingsManager::mergeServiceLikes(const QString& service, const QVariantLi
     save();
 }
 
+void SettingsManager::importServiceLikes(const QString& service, const QVariantList& tracks) {
+    // первый импорт это старые лайки, им место в конце; дальше новые идут наверх
+    QString flag = "imported_likes_" + service.toLower();
+    int added = m_playlists->importLikes(tracks, m_data[flag].toBool());
+    m_data[flag] = true;
+    if (added > 0) save();
+}
+
 bool SettingsManager::isLiked(const QString& trackId) {
     return m_playlists->isLiked(trackId);
 }
@@ -303,6 +311,16 @@ void SettingsManager::setSmartWavesEnabled(bool enabled) {
 
 bool SettingsManager::getSmartWavesEnabled() {
     return m_data["smart_waves"].toBool(true);
+}
+
+void SettingsManager::setYouTubeLikesBrowser(const QString& browser) {
+    m_data["youtube_likes_browser"] = browser;
+    save();
+    emit settingsChanged();
+}
+
+QString SettingsManager::getYouTubeLikesBrowser() {
+    return m_data["youtube_likes_browser"].toString();
 }
 
 void SettingsManager::setSyncToSoundCloud(bool enabled) {

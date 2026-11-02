@@ -43,6 +43,8 @@ private:
     CacheManager* cache;
     AudioEngine* audio;
     ServiceManager* services;
+    // из какого браузера уже импортированы лайки YouTube в этом запуске
+    QString youtubeLikesBrowser;
     ListenTracker* listens;
     PlaybackQueue* queue;
     SettingsManager* settings;

@@ -480,6 +480,21 @@ bool ServiceManager::syncSoundCloud() {
     return true;
 }
 
+void ServiceManager::importYouTubeLikes(const QString& browser) {
+    if (browser.isEmpty()) return;
+    youtube->fetchLikedMusic(browser, [this, browser](bool ok, const QVariantList& tracks) {
+        if (!ok) {
+            emit notice("YouTube likes: yt-dlp could not read " + browser + " cookies. Sign in to YouTube Music there");
+            return;
+        }
+        // подпись в порядок: в MAIN песня должна совпасть со своими версиями на других площадках
+        QVariantList clean;
+        for (const QVariant& t : tracks) clean.append(TrackMatch::cleaned(t.toMap()));
+        emit likesImported("YouTube", clean);
+        emit notice(QString("YouTube likes: %1 found").arg(clean.size()));
+    });
+}
+
 void ServiceManager::setSyncToSoundCloud(bool enabled) {
     bool turnedOn = enabled && !m_syncToSoundCloud;
     m_syncToSoundCloud = enabled;

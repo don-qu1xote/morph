@@ -1966,6 +1966,34 @@ ApplicationWindow {
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
+                                                // по кругу: выключено, потом браузеры, из которых yt-dlp умеет брать cookies
+                                                var browsers = ["", "chrome", "safari", "firefox", "brave"]
+                                                var next = browsers[(browsers.indexOf(MorphSettings.getYouTubeLikesBrowser()) + 1) % browsers.length]
+                                                MorphSettings.setYouTubeLikesBrowser(next)
+                                                showToast(next === "" ? "YouTube likes off" : "YouTube likes from " + next)
+                                            }
+                                            background: Rectangle { color: "#f0f0f0"; radius: 10; border.color: "#cccccc" }
+                                            contentItem: RowLayout {
+                                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                                anchors.leftMargin: 15; anchors.rightMargin: 15; spacing: 10
+                                                Image {
+                                                    source: "qrc:/assets/youtube_music_icon.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter
+                                                    sourceSize.width: 40; sourceSize.height: 40
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: "#111111" }
+                                                }
+                                                Text { text: "YouTube Likes"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Medium; Layout.fillWidth: true; verticalAlignment: Text.AlignVCenter }
+                                                Text {
+                                                    text: (window.settingsVersion, MorphSettings.getYouTubeLikesBrowser() || "off").toUpperCase()
+                                                    color: "#111111"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black
+                                                    Layout.alignment: Qt.AlignVCenter
+                                                }
+                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                                        }
+
+                                        Button {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 50
+                                            onClicked: (mouse) => {
                                                 var newState = !MorphSettings.getDiscordRpcEnabled()
                                                 MorphSettings.setDiscordRpcEnabled(newState)
                                                 showToast("Discord RPC " + (newState ? "enabled" : "disabled"))
@@ -3514,6 +3542,7 @@ ApplicationWindow {
             artistPage.info = info
             artistPage.loading = false
         }
+        function onNotice(message) { showToast(message) }
         function onFallbackChosen(trackId, source) {
             if (currentTrack && currentTrack.id === trackId) currentFallback = source
         }

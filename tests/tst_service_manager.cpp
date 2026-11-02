@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include "core/ServiceManager.h"
@@ -438,6 +439,40 @@ private slots:
         QVERIFY(soundcloudApi.waitFor("/users/555/track_likes/88", 2, 10000));
         QCOMPARE(soundcloudApi.requestsTo("/users/555/track_likes/88")[1].method, QByteArray("DELETE"));
         QTRY_VERIFY(services.library()->mirrored("SoundCloud").isEmpty());
+    }
+
+    // понравившееся в YouTube Music через cookies браузера: подпись в порядке,
+    // в MAIN только добавить
+    void youTubeLikesAreImported() {
+        QTemporaryDir dir;
+        qputenv("YTDLP_LOG", dir.filePath("yt-dlp.log").toUtf8());
+        tools.add("yt-dlp", "echo \"$@\" >> \"$YTDLP_LOG\"\n"
+                            "case \"$*\" in\n"
+                            "  *list=LM*)\n"
+                            "    echo '{\"id\": \"v1\", \"title\": \"Zamay - Неошансон (Official Video)\", "
+                            "\"channel\": \"Zamay\", \"duration\": 187}' ;;\n"
+                            "esac\n");
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QSignalSpy imported(&services, &ServiceManager::likesImported);
+        QSignalSpy notices(&services, &ServiceManager::notice);
+
+        services.importYouTubeLikes("chrome");
+        QVERIFY(imported.wait());
+        QCOMPARE(imported[0][0].toString(), QString("YouTube"));
+        QVariantMap t = imported[0][1].toList()[0].toMap();
+        QCOMPARE(t["artist"].toString(), QString("Zamay"));
+        QCOMPARE(t["title"].toString(), QString("Неошансон"));
+        QCOMPARE(t["service"].toString(), QString("YouTube"));
+
+        QFile log(dir.filePath("yt-dlp.log"));
+        QVERIFY(log.open(QIODevice::ReadOnly));
+        QString args = QString::fromUtf8(log.readAll());
+        QVERIFY(args.contains("--cookies-from-browser chrome"));
+        QVERIFY(args.contains("https://music.youtube.com/playlist?list=LM"));
+        QVERIFY(!notices.isEmpty());
     }
 
     // суточный токен истёк: в SoundCloud ничего не пишется

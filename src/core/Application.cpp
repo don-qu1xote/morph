@@ -87,6 +87,20 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(listens, &ListenTracker::listenFinished, services, &ServiceManager::reportListen);
     connect(settings, &SettingsManager::likeToggled, services, &ServiceManager::setLiked);
     connect(services, &ServiceManager::likesFetched, settings, &SettingsManager::mergeServiceLikes);
+    connect(services, &ServiceManager::likesImported, settings, &SettingsManager::importServiceLikes);
+    // Лайки YouTube на старте и когда в настройках выбрали другой браузер.
+    // Браузеры там переключаются кликами по кругу, поэтому ждём, пока выбор устоится
+    QTimer* youtubeLikesTimer = new QTimer(this);
+    youtubeLikesTimer->setSingleShot(true);
+    youtubeLikesTimer->setInterval(3000);
+    connect(youtubeLikesTimer, &QTimer::timeout, this, [this]() {
+        QString browser = settings->getYouTubeLikesBrowser();
+        if (browser == youtubeLikesBrowser) return;
+        youtubeLikesBrowser = browser;
+        services->importYouTubeLikes(browser);
+    });
+    youtubeLikesTimer->start();
+    connect(settings, &SettingsManager::settingsChanged, youtubeLikesTimer, qOverload<>(&QTimer::start));
     // MAIN собирается из лайков, поэтому идёт за ними следом
     Library* library = services->library();
     library->syncLikes(settings->getLikedTracks());

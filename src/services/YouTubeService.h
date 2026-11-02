@@ -24,6 +24,9 @@ public:
 
     // как resolveStreamUrl, но в очереди после всего, что включили
     void prefetch(const QString& trackId);
+    // Понравившееся в YouTube Music (плейлист LM) через cookies браузера:
+    // chrome, safari, firefox, brave. ok ложный, если yt-dlp не смог их прочитать
+    void fetchLikedMusic(const QString& browser, std::function<void(bool ok, const QVariantList& tracks)> done);
     // найти по "артист - название" и отдать поток под чужим id, чтобы QML
     // доиграл трек так, будто он пришёл из исходного сервиса
     void resolveByQuery(const QString& query, const QString& trackId, bool prefetch = false);
@@ -59,7 +62,8 @@ private:
     void runStream(const QString& key, bool fast);
     void finishStream(const QString& key, const QString& url, int bitrate);
     void runYtDlp(const QStringList& args, const QString& type);
-    void runYtDlp(const QStringList& args, std::function<void(bool ok, const QString& output)> done);
+    void runYtDlp(const QStringList& args, std::function<void(bool ok, const QString& output)> done,
+                  int timeoutMs = 20000);
     QVariantList parseJsonLines(const QString& output);
     QVariantMap parseYoutubeTrack(const QJsonObject& obj);
 

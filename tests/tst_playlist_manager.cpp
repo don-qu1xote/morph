@@ -54,6 +54,25 @@ private slots:
         QVERIFY(pm.toggleLike(yandex).isEmpty());
     }
 
+    // лайки YouTube только добавляются: старые в конец, новые наверх, без повторов песен
+    void importedLikesAreOnlyAdded() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        pm.toggleLike({{"id", "y1"}, {"service", "Yandex"}, {"artist", "Zamay"}, {"title", "Неошансон"}});
+
+        QVariantList fromYouTube{
+            QVariantMap{{"id", "v1"}, {"service", "YouTube"}, {"artist", "Zamay"}, {"title", "Неошансон"}},
+            QVariantMap{{"id", "v2"}, {"service", "YouTube"}, {"artist", "Other"}, {"title", "Song"}}};
+        QCOMPARE(pm.importLikes(fromYouTube, false), 1);
+        QCOMPARE(likedIds(pm), QStringList({"y1", "v2"}));
+
+        QVariantList newer{QVariantMap{{"id", "v3"}, {"service", "YouTube"}, {"artist", "New"}, {"title", "One"}},
+                           fromYouTube[1]};
+        QCOMPARE(pm.importLikes(newer, true), 1);
+        QCOMPARE(likedIds(pm), QStringList({"v3", "y1", "v2"}));
+        QCOMPARE(pm.importLikes(newer, true), 0);
+    }
+
     void playlistKeepsNewestTrackFirst() {
         QJsonObject data;
         PlaylistManager pm(&data);

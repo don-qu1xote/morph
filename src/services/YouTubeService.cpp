@@ -221,7 +221,16 @@ void YouTubeService::runYtDlp(const QStringList& args, const QString& type) {
 
 // Процесс, таймаут и уборка отдельно от того, что делать с выводом.
 // ok ложный, если yt-dlp не запустился, упал или не уложился в 20 секунд
-void YouTubeService::runYtDlp(const QStringList& args, std::function<void(bool, const QString&)> done) {
+void YouTubeService::fetchLikedMusic(const QString& browser, std::function<void(bool, const QVariantList&)> done) {
+    QStringList args = listArgs() << "--cookies-from-browser" << browser
+                                  << "https://music.youtube.com/playlist?list=LM";
+    // тысяча лайков листается дольше обычных двадцати секунд
+    runYtDlp(
+        args, [this, done](bool ok, const QString& output) { done(ok, ok ? parseJsonLines(output) : QVariantList()); },
+        120000);
+}
+
+void YouTubeService::runYtDlp(const QStringList& args, std::function<void(bool, const QString&)> done, int timeoutMs) {
     QProcess* process = new QProcess(this);
     process->setWorkingDirectory(PathProvider::getTrackCachePath());
     
@@ -249,7 +258,7 @@ void YouTubeService::runYtDlp(const QStringList& args, std::function<void(bool, 
     });
 
     process->start("yt-dlp", args);
-    timer->start(20000);
+    timer->start(timeoutMs);
 }
 
 QVariantList YouTubeService::parseJsonLines(const QString& output) {
