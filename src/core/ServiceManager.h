@@ -51,6 +51,8 @@ public slots:
     // названии, артисте или альбоме. sort: custom, title, artist, plays, duration
     QVariantList arrangeTracks(const QVariantList& tracks, const QString& filter, const QString& sort) const;
     void getDailyMixes();
+    // недавно игравшее на всех площадках, для ряда на главной
+    QVariantList recentTracks(int limit = 16) const { return m_recommender->history().recent(limit); }
     void resolve(const QString& serviceName, const QString& trackId);
     void prefetch(const QString& serviceName, const QString& trackId);
     void otherVersion(const QVariantMap& track);

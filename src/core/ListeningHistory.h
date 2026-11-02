@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QString>
+#include <QVariantList>
 #include <QVariantMap>
 
 // Одно событие истории: прослушивание, лайк, снятый лайк или дизлайк
@@ -42,6 +43,9 @@ public:
     };
     // по TrackMatch::songKey, только прослушивания не раньше since
     QHash<QString, SongStats> songs(qint64 since = 0) const;
+    // Недавно игравшие песни для главной, последняя первой и каждая один раз.
+    // Скипнутое сюда не попадает: пролистал за пять секунд, значит не слушал
+    QVariantList recent(int limit) const;
 
 private:
     void load();

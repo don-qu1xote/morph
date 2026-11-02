@@ -111,6 +111,29 @@ private slots:
         QCOMPARE(rec.history().songs(now).value(TrackMatch::songKey(track("1", "A", "Hit"))).plays, 1);
     }
 
+    void recentIsNewestFirstWithoutSkips() {
+        Recommender rec(dir.path());
+        qint64 now = kStart;
+        rec.setClock([&now] { return now; });
+        rec.listened(track("1", "A", "First"), 200, 200, true);
+        now += 60;
+        rec.listened(track("2", "B", "Second"), 120, 200, false);
+        rec.listened(track("3", "C", "Skipped"), 5, 200, false);
+        rec.liked(track("4", "D", "Only liked"), true);
+        // та же песня с другой площадки: в ряду одна, самая свежая
+        now += 60;
+        QVariantMap again = track("sc1", "A", "First");
+        again["service"] = "SoundCloud";
+        rec.listened(again, 200, 200, true);
+
+        QVariantList recent = rec.history().recent(10);
+        QCOMPARE(recent.size(), 2);
+        QCOMPARE(recent[0].toMap()["id"].toString(), QString("sc1"));
+        QCOMPARE(recent[1].toMap()["id"].toString(), QString("2"));
+        QCOMPARE(recent[0].toMap()["playedAt"].toLongLong(), now);
+        QCOMPARE(rec.history().recent(1).size(), 1);
+    }
+
     // лайки дают вкус надолго, скипы тянут вниз, недавнее затухает
     void affinityFollowsListening() {
         Recommender rec(dir.path());

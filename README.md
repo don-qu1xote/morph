@@ -63,6 +63,9 @@
   - Dark, minimalist aesthetic utilizing smooth gradients and QML animations.
   - Circular reveal splash screen synchronized with logo expansion.
   - Time-aware greetings with active service status indicators.
+  - Home screen with **Jump Back In** tiles for MAIN and your playlists (hover a tile to play it), **Recently Played** from every service and a My Vibe card that moves while the wave plays.
+  - Empty screens say what will appear there and how to get it: charts without a Yandex token, empty search history, a search with no results.
+  - The library opens with MAIN: covers of the latest likes and how many songs come from each service. Playlists without a cover get their own color and letter instead of a grey square.
   - Real-time visual indicators (green dots) for cached offline tracks.
   - Master-Detail navigation flow for intuitive library browsing.
   - Interactive elements with consistent hover states and hand-cursor feedback.

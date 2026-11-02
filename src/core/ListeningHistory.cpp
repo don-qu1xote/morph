@@ -2,6 +2,7 @@
 #include "TrackMatch.h"
 #include <QFile>
 #include <QJsonDocument>
+#include <QSet>
 
 // десять тысяч событий это пара лет прослушиваний и пара мегабайт на диске
 static const int kKeep = 10000;
@@ -63,6 +64,21 @@ void ListeningHistory::load() {
         m_events = m_events.mid(m_events.size() - kKeep);
         rewrite();
     }
+}
+
+QVariantList ListeningHistory::recent(int limit) const {
+    QVariantList out;
+    QSet<QString> seen;
+    for (auto it = m_events.crbegin(); it != m_events.crend() && out.size() < limit; ++it) {
+        if (it->kind != ListenEvent::Listen || it->skipped()) continue;
+        QString key = TrackMatch::songKey(it->track);
+        if (seen.contains(key)) continue;
+        seen.insert(key);
+        QVariantMap track = it->track;
+        track["playedAt"] = it->at;
+        out.append(track);
+    }
+    return out;
 }
 
 void ListeningHistory::rewrite() const {

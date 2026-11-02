@@ -217,7 +217,8 @@ ApplicationWindow {
     function refreshPlaylists() {
         playlistsModel.clear()
         var pls = MorphSettings.getPlaylists()
-        for (var p in pls) playlistsModel.append({ "name": p, "coverUrl": pls[p].coverUrl || "" })
+        for (var p in pls) playlistsModel.append({ "name": p, "coverUrl": pls[p].coverUrl || "", "trackCount": pls[p].tracks ? pls[p].tracks.length : 0 })
+        refreshHomeTiles()
     }
 
     function refreshStyleFiles() {
@@ -252,6 +253,8 @@ ApplicationWindow {
 
         refreshPlaylists()
         refreshStyleFiles()
+        refreshMainInfo()
+        refreshRecent()
         
         var hist = MorphSettings.getSearchHistory()
         for (var i = 0; i < hist.length; i++) historyModel.append(hist[i])
@@ -311,6 +314,109 @@ ApplicationWindow {
         onTriggered: saveCurrentSession()
     }
 
+    property var homeTiles: []
+    property var recentTracks: []
+    property var mainInfo: ({ "covers": [], "sources": {} })
+    property bool hasYandexToken: MorphSettings.getYandexToken() !== ""
+    property bool chartsTimedOut: false
+    property bool searchFinished: false
+
+    onIsSearchingChanged: if (isSearching) searchFinished = false
+    onCurrentViewChanged: if (currentView === "home") refreshRecent()
+
+    // Плитки на главной: MAIN, плейлист, который играл последним, и остальные
+    function refreshHomeTiles() {
+        var tiles = []
+        if (MorphLibrary.count > 0)
+            tiles.push({ "name": "LIKED", "title": "MAIN", "caption": MorphLibrary.count + " songs", "coverUrl": "", "icon": "qrc:/assets/heart.svg" })
+        var pls = MorphSettings.getPlaylists()
+        var names = Object.keys(pls)
+        var last = names.indexOf(currentPlaylist)
+        if (last > 0) { names.splice(last, 1); names.unshift(currentPlaylist) }
+        for (var i = 0; i < names.length && tiles.length < 6; i++) {
+            var n = pls[names[i]].tracks ? pls[names[i]].tracks.length : 0
+            tiles.push({ "name": names[i], "title": names[i], "caption": n === 1 ? "1 track" : n + " tracks", "coverUrl": pls[names[i]].coverUrl || "" })
+        }
+        homeTiles = tiles
+    }
+
+    function refreshRecent() {
+        recentTracks = MorphServices.recentTracks(16)
+    }
+
+    // шапка библиотеки: обложки последних лайков и сколько песен с какой площадки
+    function refreshMainInfo() {
+        var tracks = MorphLibrary.tracks()
+        var covers = []
+        var sources = {}
+        for (var i = 0; i < tracks.length; i++) {
+            var s = tracks[i].service || "Yandex"
+            sources[s] = (sources[s] || 0) + 1
+            if (covers.length < 4 && tracks[i].coverUrl) covers.push(tracks[i].coverUrl)
+        }
+        mainInfo = { "covers": covers, "sources": sources }
+    }
+
+    function requestCharts() {
+        chartsTimedOut = false
+        chartsTimeout.restart()
+        MorphServices.getCharts()
+    }
+
+    // Список, который играет, но не сохраняется плейлистом: недавнее, чарты
+    function playTracks(name, tracks, index) {
+        var list = []
+        for (var i = 0; i < tracks.length; i++) {
+            var t = tracks[i]
+            if (!t.service) t.service = "Yandex"
+            if (t.durationMs === undefined) t.durationMs = 0
+            if (t.album === undefined) t.album = ""
+            if (t.webUrl === undefined) t.webUrl = ""
+            list.push(t)
+        }
+        currentPlaylist = name
+        saveLastImport = false
+        fullPlaylistTracks = list
+        libraryModel.clear()
+        loadedTracksCount = 0
+        loadNextChunk()
+        playTrack(libraryModel.get(index), index)
+    }
+
+    function playPlaylist(name) {
+        openPlaylist(name)
+        if (libraryModel.count > 0) playTrack(libraryModel.get(0), 0)
+    }
+
+    // чарты не пришли: без этого вместо них вечно мигала бы заглушка
+    Timer {
+        id: chartsTimeout
+        interval: 15000
+        running: true
+        onTriggered: chartsTimedOut = chartsModel.count === 0
+    }
+
+    Connections {
+        target: MorphLibrary
+        function onChanged() {
+            refreshMainInfo()
+            refreshHomeTiles()
+        }
+    }
+
+    Connections {
+        target: MorphServices
+        function onTrackStarted() {
+            if (currentView === "home") recentRefresh.restart()
+        }
+    }
+
+    // прошлый трек попадает в историю чуть позже, чем стартует следующий
+    Timer {
+        id: recentRefresh
+        interval: 1500
+        onTriggered: refreshRecent()
+    }
     function getServiceIcon(serviceName) {
         if (serviceName === "Yandex") return "qrc:/assets/yandex_music_icon.svg"
         if (serviceName === "SoundCloud") return "qrc:/assets/soundcloud_icon.svg"
@@ -1070,7 +1176,7 @@ ApplicationWindow {
                                         visible: !isSearching && searchField.text.trim() === ""
                                         spacing: 20
                                         RowLayout {
-                                            id: historyLabelRow; Layout.fillWidth: true
+                                            id: historyLabelRow; Layout.fillWidth: true; visible: historyModel.count > 0
                                             Text { text: "Recent searches"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 18; font.weight: Font.Bold; Layout.fillWidth: true }
                                             Text { 
                                                 text: "Clear all"; color: "#555555"; font.family: mainFont.name; font.pixelSize: 12; visible: historyModel.count > 0
@@ -1081,7 +1187,15 @@ ApplicationWindow {
                                             Layout.fillWidth: true; Layout.preferredHeight: historyList.contentHeight + 20; color: "#f0f0f0"; radius: 12; border.color: "#cccccc"; border.width: 1; clip: true; visible: historyModel.count > 0
                                             ListView { id: historyList; anchors.fill: parent; anchors.margins: 10; interactive: false; clip: true; model: historyModel; delegate: trackDelegate }
                                         }
-                                        Text { text: "Your recent searches will appear here"; color: "#888888"; font.family: mainFont.name; font.pixelSize: 14; visible: historyModel.count === 0; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 40 }
+                                        EmptyState {
+                                            Layout.fillWidth: true; Layout.topMargin: 50
+                                            visible: historyModel.count === 0
+                                            icon: "qrc:/assets/magnify.svg"
+                                            title: "Search everywhere at once"
+                                            hint: "Yandex Music, SoundCloud and YouTube in one list. Your recent searches will appear here"
+                                            textColor: "#111111"; subtextColor: "#888888"; bubbleColor: "#f0f0f0"; accentColor: "#b57339"; accentTextColor: "white"
+                                            fontFamily: mainFont.name
+                                        }
                                     }
 
                                     ColumnLayout {
@@ -1092,6 +1206,17 @@ ApplicationWindow {
                                             Layout.fillWidth: true; Layout.preferredHeight: searchResultsList.contentHeight + 20; color: "#f0f0f0"; radius: 12; border.color: "#cccccc"; border.width: 1; clip: true
                                             ListView { id: searchResultsList; anchors.fill: parent; anchors.margins: 10; interactive: false; clip: true; model: searchModel; delegate: trackDelegate }
                                         }
+                                    }
+                                    EmptyState {
+                                        Layout.fillWidth: true; Layout.topMargin: 50
+                                        visible: searchFinished && !isSearching && searchModel.count === 0 && searchField.text.trim() !== ""
+                                        icon: "qrc:/assets/magnify.svg"
+                                        title: "Nothing found"
+                                        hint: searchSource === "all" ? "Try another spelling or fewer words" : "Try another spelling, or look on every service"
+                                        actionText: searchSource === "all" ? "" : "SEARCH EVERYWHERE"
+                                        textColor: "#111111"; subtextColor: "#888888"; bubbleColor: "#f0f0f0"; accentColor: "#b57339"; accentTextColor: "white"
+                                        fontFamily: mainFont.name
+                                        onAction: { searchSource = "all"; searchModel.clear(); isSearching = true; MorphServices.search(searchField.text, "all") }
                                     }
 
                                 }
@@ -1132,6 +1257,7 @@ ApplicationWindow {
                                     }
 
                                     RowLayout {
+                                        Layout.fillWidth: true
                                         spacing: 12
                                         Rectangle {
                                             id: greetingDot
@@ -1145,6 +1271,11 @@ ApplicationWindow {
                                             color: "#111111"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black
                                             opacity: 1.0
                                         }
+                                        Item { Layout.fillWidth: true }
+                                        Text {
+                                            text: new Date().toLocaleDateString(Qt.locale("en_US"), "dddd, d MMMM").toUpperCase()
+                                            color: "#888888"; font.family: mainFont.name; font.pixelSize: 11; font.weight: Font.Black; font.letterSpacing: 1
+                                        }
                                     }
 
                                     Rectangle {
@@ -1153,6 +1284,10 @@ ApplicationWindow {
                                         clip: true; border.color: "#cccccc"; border.width: 1
                                         color: "#f0f0f0"
                                         
+                                        VibeBackdrop {
+                                            anchors.fill: parent; radius: 25; accentColor: "#b57339"
+                                            playing: myWaveActive && MorphAudio.isPlaying
+                                        }
                                         ColumnLayout {
                                             anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 30; spacing: 5
                                             Text { text: "MY VIBE"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 28; font.weight: Font.Black }
@@ -1225,11 +1360,24 @@ ApplicationWindow {
                                             }
                                         }
                                     }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 20
+                                        visible: homeTiles.length > 0
+                                        SectionHeader { Layout.fillWidth: true; title: "JUMP BACK IN"; textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; fontFamily: mainFont.name }
+                                        QuickTiles {
+                                            Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
+                                            model: homeTiles
+                                            textColor: "#111111"; subtextColor: "#888888"; cardColor: "#f0f0f0"; hoverColor: "#e6e6e6"; borderColor: "#cccccc"; accentColor: "#b57339"; accentTextColor: "white"
+                                            fontFamily: mainFont.name
+                                            onOpened: (name) => { currentView = "library"; openPlaylist(name) }
+                                            onPlayed: (name) => playPlaylist(name)
+                                        }
+                                    }
 
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 20
                                         visible: stationsModel.count > 0
-                                        Text { text: "WAVES"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        SectionHeader { Layout.fillWidth: true; title: "WAVES"; caption: "Stations from Yandex Music"; textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; fontFamily: mainFont.name }
                                         StationsRow {
                                             Layout.fillWidth: true; Layout.preferredHeight: 100
                                             model: stationsModel
@@ -1243,7 +1391,7 @@ ApplicationWindow {
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 20
                                         visible: dailyMixesModel.count > 0
-                                        Text { text: "FOR YOU"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        SectionHeader { Layout.fillWidth: true; title: "FOR YOU"; caption: "Mixes from your listening"; textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; fontFamily: mainFont.name }
                                         Rectangle {
                                             Layout.fillWidth: true; Layout.preferredHeight: 160; color: "#f0f0f0"; radius: 12; border.color: "#cccccc"; border.width: 1; clip: true
                                             Item {
@@ -1308,8 +1456,23 @@ ApplicationWindow {
 
                                     ColumnLayout {
                                         Layout.fillWidth: true; spacing: 20
-                                        Text { text: "CHARTS"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Black }
+                                        visible: recentTracks.length > 0
+                                        SectionHeader { Layout.fillWidth: true; title: "RECENTLY PLAYED"; caption: "On every service"; textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; fontFamily: mainFont.name }
+                                        RecentRow {
+                                            Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
+                                            tracks: recentTracks
+                                            currentId: currentTrack ? currentTrack.id : ""
+                                            textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; accentTextColor: "white"
+                                            fontFamily: mainFont.name
+                                            onPlayed: (index) => playTracks("RECENTLY PLAYED", recentTracks, index)
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 20
+                                        SectionHeader { Layout.fillWidth: true; title: "CHARTS"; caption: "Top of Yandex Music"; textColor: "#111111"; subtextColor: "#888888"; accentColor: "#b57339"; fontFamily: mainFont.name }
                                         Rectangle {
+                                            visible: chartsModel.count > 0
                                             Layout.fillWidth: true; Layout.preferredHeight: chartsListView.contentHeight + 20; color: "#f0f0f0"; radius: 12; border.color: "#cccccc"; border.width: 1; clip: true
                                             ListView {
                                                 id: chartsListView
@@ -1419,6 +1582,22 @@ ApplicationWindow {
                                             }
                                         }
                                     }
+                                        SkeletonRows {
+                                            Layout.fillWidth: true; Layout.preferredHeight: implicitHeight
+                                            visible: chartsModel.count === 0 && hasYandexToken && !chartsTimedOut
+                                            columns: 2; rows: 5; baseColor: "#e2e2e2"
+                                        }
+                                        EmptyState {
+                                            Layout.fillWidth: true; Layout.topMargin: 10; Layout.bottomMargin: 10
+                                            visible: chartsModel.count === 0 && (!hasYandexToken || chartsTimedOut)
+                                            icon: "qrc:/assets/music-circle.svg"
+                                            title: hasYandexToken ? "Charts did not load" : "Charts come from Yandex Music"
+                                            hint: hasYandexToken ? "Check the connection or the VPN and try again" : "Add your Yandex Music token in Settings to see the top tracks here"
+                                            actionText: hasYandexToken ? "TRY AGAIN" : "OPEN SETTINGS"
+                                            textColor: "#111111"; subtextColor: "#888888"; bubbleColor: "#f0f0f0"; accentColor: "#b57339"; accentTextColor: "white"
+                                            fontFamily: mainFont.name
+                                            onAction: { if (hasYandexToken) requestCharts(); else currentView = "settings" }
+                                        }
                                 }
                             }
                         }
@@ -1481,49 +1660,35 @@ ApplicationWindow {
                                                 GridView {
                                                     id: libraryGridView
                                                     anchors.fill: parent; anchors.margins: 10; interactive: false; clip: true
-                                                    cellWidth: 160; cellHeight: 200
+                                                    cellWidth: 160; cellHeight: 216
                                                     model: playlistsModel
                                                     header: Item {
                                                         width: libraryGridView.width; height: 200
-                                                        Rectangle {
-                                                            anchors.fill: parent; anchors.margins: 10; color: "#f0f0f0"; radius: 12; border.color: likedMouseArea.containsMouse ? "#111111" : "#cccccc"; border.width: 1
-                                                            Rectangle {
-                                                                anchors.fill: parent; anchors.margins: 10; color: "#cccccc"; radius: 8
-                                                                Image {
-                                                                    anchors.centerIn: parent
-                                                                    source: "qrc:/assets/heart.svg"; Layout.preferredWidth: 32; Layout.preferredHeight: 32; sourceSize: Qt.size(64, 64)
-                                                                    layer.enabled: true; layer.effect: ColorOverlay { color: "#111111" }
-                                                                }
-                                                                Text { 
-                                                                    text: "MAIN"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black
-                                                                    anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 12
-                                                                }
-                                                                Text {
-                                                                    text: MorphLibrary.count
-                                                                    color: "#111111"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Black
-                                                                    anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 12
-                                                                }
-                                                            }
-                                                            MouseArea { id: likedMouseArea; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true; onClicked: (mouse) => openPlaylist("LIKED") }
+                                                        MainCard {
+                                                            anchors.fill: parent; anchors.margins: 10
+                                                            count: MorphLibrary.count
+                                                            covers: mainInfo.covers
+                                                            sources: mainInfo.sources
+                                                            textColor: "#111111"; subtextColor: "#888888"; cardColor: "#f0f0f0"; chipColor: "#e4e4e4"; borderColor: "#cccccc"; accentColor: "#b57339"; accentTextColor: "white"
+                                                            fontFamily: mainFont.name
+                                                            onOpened: openPlaylist("LIKED")
+                                                            onPlayed: playPlaylist("LIKED")
                                                         }
                                                     }
                                                     delegate: Item {
-                                                        width: 160; height: 200
+                                                        width: 160; height: 216
                                                         Rectangle {
                                                             anchors.fill: parent; anchors.margins: 10; color: "#f0f0f0"; radius: 12; border.color: playlistMouseArea.containsMouse ? "#111111" : "#cccccc"; border.width: 1
                                                             ColumnLayout {
                                                                 anchors.fill: parent; anchors.margins: 10; spacing: 8
-                                                                    Rectangle {
-                                                                        Layout.fillWidth: true; Layout.preferredHeight: width; color: "#cccccc"; radius: 8
-                                                                        Image {
-                                                                            id: playlistImage
-                                                                            anchors.fill: parent; source: coverUrl ? MorphCache.getCachedCover(coverUrl) : ""; fillMode: Image.PreserveAspectCrop
-                                                                            visible: coverUrl && coverUrl !== ""; layer.enabled: true; layer.effect: OpacityMask { maskSource: Rectangle { width: 120; height: 120; radius: 8 } }
-                                                                        }
-                                                                        Text { anchors.centerIn: parent; text: "♪"; color: "#888888"; font.family: mainFont.name; font.pixelSize: 40; visible: playlistImage.status !== Image.Ready }
-                                                                        Text { anchors.centerIn: parent; text: "♪"; color: "#888888"; font.family: mainFont.name; font.pixelSize: 40; visible: !coverUrl || coverUrl === "" }
+                                                                    CoverArt {
+                                                                        Layout.fillWidth: true; Layout.preferredHeight: width
+                                                                        source: model.coverUrl || ""; name: model.name || ""; radius: 12; fontFamily: mainFont.name
+                                                                        scale: playlistMouseArea.containsMouse ? 1.03 : 1
+                                                                        Behavior on scale { NumberAnimation { duration: 120 } }
                                                                     }
                                                                 Text { text: name || ""; color: "#111111"; font.family: mainFont.name; font.pixelSize: 13; font.weight: Font.Bold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                                Text { text: model.trackCount === 1 ? "1 track" : model.trackCount + " tracks"; color: "#888888"; font.family: mainFont.name; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true; Layout.topMargin: -6 }
                                                             }
                                                             MouseArea { id: playlistMouseArea; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true; onClicked: (mouse) => openPlaylist(name) }
                                                         }
@@ -1596,6 +1761,7 @@ ApplicationWindow {
                                         id: settingsMainContent
                                         spacing: 25
                                         Text { text: "SETTINGS"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 16; font.weight: Font.Bold }
+                                        SectionHeader { Layout.fillWidth: true; compact: true; title: "ACCOUNTS"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 10
                                             RowLayout {
@@ -1614,6 +1780,8 @@ ApplicationWindow {
                                                 onEditingFinished: {
                                                     MorphSettings.setYandexToken(text)
                                                     MorphServices.setYandexToken(text)
+                                                    hasYandexToken = text !== ""
+                                                    if (hasYandexToken) requestCharts()
                                                     showToast("Yandex token saved")
                                                 }
                                             }
@@ -1640,6 +1808,7 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "PLAYLIST COVERS"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 10
                                             RowLayout {
@@ -1682,6 +1851,7 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "AUDIO"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 10
                                             Text { text: "Yandex Music Quality"; color: "#555555"; font.family: mainFont.name; font.pixelSize: 11 }
@@ -1768,6 +1938,7 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "STORAGE"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
@@ -1823,6 +1994,7 @@ ApplicationWindow {
                                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                                         }
 
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "WAVE"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
@@ -1940,6 +2112,7 @@ ApplicationWindow {
                                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                                         }
 
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "SYNC AND SHARING"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
@@ -3588,6 +3761,7 @@ ApplicationWindow {
     Connections {
         target: MorphServices
         function onSearchResultsReady(serviceName, results) {
+            searchFinished = true
             isSearching = false
             for (var i = 0; i < results.length; i++) {
                 var item = results[i]
