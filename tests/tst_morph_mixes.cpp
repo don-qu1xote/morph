@@ -218,7 +218,10 @@ private slots:
         });
         api.on("GET", "/albums/5/with-tracks", [](const HttpRequest&) {
             QJsonArray volume{yandexJson(51, "Fav", "Single A"), yandexJson(52, "Fav", "Single B")};
-            return jsonResult(QJsonObject{{"volumes", QJsonArray{volume}}});
+            // не QJsonArray{volume}: clang видит в этом копию, а не массив из одного диска
+            QJsonArray volumes;
+            volumes.append(volume);
+            return jsonResult(QJsonObject{{"volumes", volumes}});
         });
 
         QSignalSpy ready(&w.mixes, &MorphMixes::ready);

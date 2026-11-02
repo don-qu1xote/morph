@@ -259,7 +259,10 @@ private slots:
         });
         yandexApi.on("GET", "/albums/5/with-tracks", [](const HttpRequest&) {
             QJsonObject t{{"id", 51}, {"title", "Intro"}, {"artists", QJsonArray{QJsonObject{{"name", "Guest"}}}}};
-            return jsonResult(QJsonObject{{"volumes", QJsonArray{QJsonArray{t}}}});
+            // QJsonArray{QJsonArray{t}} в clang схлопывается в один массив, диск нужен отдельно
+            QJsonArray volumes;
+            volumes.append(QJsonArray{t});
+            return jsonResult(QJsonObject{{"volumes", volumes}});
         });
 
         NetworkManager net;
