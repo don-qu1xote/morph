@@ -99,6 +99,68 @@ private slots:
         QCOMPARE(playlists["new"].toMap()["coverUrl"].toString(), QString("cover"));
         QCOMPARE(playlists["new"].toMap()["tracks"].toList().size(), 1);
     }
+    // занятое имя не затирает чужой плейлист ни при создании, ни при переименовании
+    void namesAreNeverTakenOver() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        QVERIFY(pm.createPlaylist("  Road  "));
+        QVERIFY(pm.getPlaylists().contains("Road"));
+        QVERIFY(!pm.createPlaylist("Road"));
+        QVERIFY(!pm.createPlaylist("   "));
+        pm.addToPlaylist("Road", track("1"));
+
+        QVERIFY(pm.createPlaylist("Gym"));
+        QVERIFY(!pm.renamePlaylist("Gym", "Road", ""));
+        QCOMPARE(pm.getPlaylists()["Road"].toMap()["tracks"].toList().size(), 1);
+        // своё же имя с новой обложкой можно
+        QVERIFY(pm.renamePlaylist("Gym", "Gym", "https://cover"));
+        QCOMPARE(pm.getPlaylists()["Gym"].toMap()["coverUrl"].toString(), QString("https://cover"));
+
+        QCOMPARE(pm.uniqueName("Road"), QString("Road 2"));
+        QCOMPARE(pm.uniqueName("Trip"), QString("Trip"));
+        QCOMPARE(pm.defaultName(), QString("My Playlist #1"));
+        QVERIFY(pm.createPlaylist(pm.defaultName()));
+        QCOMPARE(pm.defaultName(), QString("My Playlist #2"));
+    }
+
+    // повторный импорт той же ссылки обновляет плейлист, чужой с тем же именем цел
+    void savedListGetsFreeName() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        pm.createPlaylist("Daily Mix 1");
+        pm.addToPlaylist("Daily Mix 1", track("mine"));
+
+        QCOMPARE(pm.createPlaylistWithTracks("Daily Mix 1", "", {track("1")}), QString("Daily Mix 1 2"));
+        QCOMPARE(pm.getPlaylists()["Daily Mix 1"].toMap()["tracks"].toList().size(), 1);
+
+        QString url = "https://soundcloud.com/x/sets/y";
+        QCOMPARE(pm.createPlaylistWithTracks("Set", "", {track("1")}, url), QString("Set"));
+        QCOMPARE(pm.createPlaylistWithTracks("Set", "", {track("1"), track("2")}, url), QString("Set"));
+        QCOMPARE(pm.getPlaylists()["Set"].toMap()["tracks"].toList().size(), 2);
+        QCOMPARE(pm.createPlaylistWithTracks("Set", "", {track("3")}, "https://other"), QString("Set 2"));
+    }
+
+    // одна песня в плейлисте один раз, даже если добавить её с другой площадки
+    void songIsAddedOnce() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        pm.createPlaylist("Road");
+        pm.createPlaylist("Gym");
+        QVariantMap yandex{{"id", "1"}, {"service", "Yandex"}, {"artist", "Zamay"}, {"title", "Song"}};
+        QVariantMap soundcloud{{"id", "sc1"}, {"service", "SoundCloud"}, {"artist", "Zamay"}, {"title", "Song"}};
+
+        QVERIFY(pm.addToPlaylist("Road", yandex));
+        QVERIFY(!pm.addToPlaylist("Road", yandex));
+        QVERIFY(!pm.addToPlaylist("Road", soundcloud));
+        QVERIFY(!pm.addToPlaylist("Nope", yandex));
+        // без названия песню не узнать: такие треки сравниваются только по id
+        QVERIFY(pm.addToPlaylist("Road", QVariantMap{{"id", "2"}}));
+        QVERIFY(pm.addToPlaylist("Road", QVariantMap{{"id", "3"}}));
+
+        QCOMPARE(pm.playlistsWith(soundcloud), QStringList({"Road"}));
+        QVERIFY(pm.playlistsWith(track("9")).isEmpty());
+    }
+
     void mergeTakesServiceAsSourceOfTruth() {
         QJsonObject data;
         QJsonArray likes;

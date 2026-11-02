@@ -138,6 +138,8 @@ ApplicationWindow {
     property string currentPlaylist: ""
     property string searchSource: "all"
     property string oldPlaylistName: ""
+    // ссылка последнего импорта: по ней повторный импорт находит свой плейлист
+    property string importSource: ""
     property string librarySubView: "grid"
     property string settingsSubView: "main"
     property bool isEditingPlaylist: false
@@ -3800,8 +3802,8 @@ ApplicationWindow {
                     id: plItemMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                     onClicked: (mouse) => {
                         if (targetContextTrack && targetContextTrack.id !== "") {
-                            MorphSettings.addToPlaylist(model.name, targetContextTrack)
-                            showToast("Added to " + model.name)
+                            if (MorphSettings.addToPlaylist(model.name, targetContextTrack)) showToast("Added to " + model.name)
+                            else showToast("Already in " + model.name)
                         }
                         playlistPickerPopup.close()
                         trackContextMenu.close()
@@ -3949,7 +3951,8 @@ ApplicationWindow {
     }
         function onPlaylistImported(name, coverUrl, tracks) {
             if (saveLastImport) {
-                MorphSettings.createPlaylistWithTracks(name, coverUrl, tracks)
+                // имя могло быть занято другим плейлистом: тогда сохранится с номером
+                name = MorphSettings.createPlaylistWithTracks(name, coverUrl, tracks, importSource)
                 currentView = "library"
                 librarySubView = "tracks"
             }
@@ -4168,12 +4171,18 @@ ApplicationWindow {
                 onClicked: (mouse) => {
                     if (plNameField.text !== "") {
                         if (isEditingPlaylist) {
-                            MorphSettings.renamePlaylist(oldPlaylistName, plNameField.text, plCoverField.text)
-                            currentPlaylist = plNameField.text
+                            if (!MorphSettings.renamePlaylist(oldPlaylistName, plNameField.text, plCoverField.text)) {
+                                showToast("You already have a playlist named " + plNameField.text.trim())
+                                return
+                            }
+                            currentPlaylist = plNameField.text.trim()
                             showToast("Playlist renamed")
                         } else {
-                            MorphSettings.createPlaylist(plNameField.text, plCoverField.text)
-                            showToast("Playlist " + plNameField.text + " created")
+                            if (!MorphSettings.createPlaylist(plNameField.text, plCoverField.text)) {
+                                showToast("You already have a playlist named " + plNameField.text.trim())
+                                return
+                            }
+                            showToast("Playlist " + plNameField.text.trim() + " created")
                         }
                         plNameField.text = ""; plCoverField.text = ""; createPlaylistPopup.close()
                     }
@@ -4267,6 +4276,8 @@ ApplicationWindow {
                             importPlaylistPopup.isBusy = true
                             importPlaylistPopup.errorMsg = ""
                             saveLastImport = true
+                            // по ссылке повторный импорт обновит тот же плейлист, а не заведёт второй
+                            importSource = importUrlField.text.trim()
                             MorphServices.importPlaylist(importUrlField.text)
                         }
                     }

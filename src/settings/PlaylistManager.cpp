@@ -112,42 +112,72 @@ int PlaylistManager::importLikes(const QVariantList& tracks, bool atTop) {
     return added.size();
 }
 
-void PlaylistManager::createPlaylist(const QString& name, const QString& coverUrl) {
+QString PlaylistManager::uniqueName(const QString& name) const {
+    QString base = name.trimmed();
     QJsonObject playlists = (*m_data)["playlists"].toObject();
-    if (!playlists.contains(name)) {
-        QJsonObject playlistData;
-        playlistData["coverUrl"] = coverUrl;
-        playlistData["tracks"] = QJsonArray();
-        playlists[name] = playlistData;
-        (*m_data)["playlists"] = playlists;
-        emit playlistsChanged();
+    if (!playlists.contains(base)) return base;
+    for (int n = 2;; ++n) {
+        QString candidate = QString("%1 %2").arg(base).arg(n);
+        if (!playlists.contains(candidate)) return candidate;
     }
 }
 
-void PlaylistManager::createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks) {
+QString PlaylistManager::defaultName() const {
     QJsonObject playlists = (*m_data)["playlists"].toObject();
+    for (int n = 1;; ++n) {
+        QString candidate = QString("My Playlist #%1").arg(n);
+        if (!playlists.contains(candidate)) return candidate;
+    }
+}
+
+bool PlaylistManager::createPlaylist(const QString& name, const QString& coverUrl) {
+    QString clean = name.trimmed();
+    QJsonObject playlists = (*m_data)["playlists"].toObject();
+    if (clean.isEmpty() || playlists.contains(clean)) return false;
+
     QJsonObject playlistData;
     playlistData["coverUrl"] = coverUrl;
+    playlistData["tracks"] = QJsonArray();
+    playlists[clean] = playlistData;
+    (*m_data)["playlists"] = playlists;
+    emit playlistsChanged();
+    return true;
+}
+
+QString PlaylistManager::createPlaylistWithTracks(const QString& name, const QString& coverUrl,
+                                                  const QVariantList& tracks, const QString& source) {
+    QJsonObject playlists = (*m_data)["playlists"].toObject();
+    QString clean = name.trimmed().isEmpty() ? defaultName() : name.trimmed();
+    bool refresh = !source.isEmpty() && playlists[clean].toObject()["source"].toString() == source;
+    QString target = refresh ? clean : uniqueName(clean);
+
+    QJsonObject playlistData;
+    playlistData["coverUrl"] = coverUrl;
+    if (!source.isEmpty()) playlistData["source"] = source;
 
     QJsonArray tracksArray;
     for (const QVariant& t : tracks) tracksArray.append(QJsonObject::fromVariantMap(t.toMap()));
     playlistData["tracks"] = tracksArray;
 
-    playlists[name] = playlistData;
+    playlists[target] = playlistData;
     (*m_data)["playlists"] = playlists;
     emit playlistsChanged();
+    return target;
 }
 
-void PlaylistManager::renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl) {
+bool PlaylistManager::renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl) {
+    QString clean = newName.trimmed();
     QJsonObject playlists = (*m_data)["playlists"].toObject();
-    if (playlists.contains(oldName)) {
-        QJsonObject playlistData = playlists[oldName].toObject();
-        playlistData["coverUrl"] = coverUrl;
-        playlists.remove(oldName);
-        playlists[newName] = playlistData;
-        (*m_data)["playlists"] = playlists;
-        emit playlistsChanged();
-    }
+    if (!playlists.contains(oldName) || clean.isEmpty()) return false;
+    if (clean != oldName && playlists.contains(clean)) return false;
+
+    QJsonObject playlistData = playlists[oldName].toObject();
+    playlistData["coverUrl"] = coverUrl;
+    playlists.remove(oldName);
+    playlists[clean] = playlistData;
+    (*m_data)["playlists"] = playlists;
+    emit playlistsChanged();
+    return true;
 }
 
 void PlaylistManager::deletePlaylist(const QString& name) {
@@ -159,15 +189,43 @@ void PlaylistManager::deletePlaylist(const QString& name) {
     }
 }
 
-void PlaylistManager::addToPlaylist(const QString& playlistName, const QVariantMap& track) {
+bool PlaylistManager::addToPlaylist(const QString& playlistName, const QVariantMap& track) {
     QJsonObject playlists = (*m_data)["playlists"].toObject();
+    if (!playlists.contains(playlistName)) return false;
     QJsonObject playlistData = playlists[playlistName].toObject();
     QJsonArray tracks = playlistData["tracks"].toArray();
+    for (const auto& t : std::as_const(tracks)) {
+        if (sameSong(t.toObject().toVariantMap(), track)) return false;
+    }
     tracks.insert(0, QJsonObject::fromVariantMap(track));
     playlistData["tracks"] = tracks;
     playlists[playlistName] = playlistData;
     (*m_data)["playlists"] = playlists;
     emit playlistsChanged();
+    return true;
+}
+
+QStringList PlaylistManager::playlistsWith(const QVariantMap& track) const {
+    QStringList out;
+    QJsonObject playlists = (*m_data)["playlists"].toObject();
+    for (auto it = playlists.begin(); it != playlists.end(); ++it) {
+        const QJsonArray tracks = it.value().toObject()["tracks"].toArray();
+        for (const auto& t : tracks) {
+            if (sameSong(t.toObject().toVariantMap(), track)) {
+                out.append(it.key());
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+// Та же запись или другая версия той же песни. Ключ без названия ничего не
+// говорит, по нему не сравниваем
+bool PlaylistManager::sameSong(const QVariantMap& a, const QVariantMap& b) {
+    if (!a["id"].toString().isEmpty() && a["id"].toString() == b["id"].toString()) return true;
+    QString key = TrackMatch::songKey(a);
+    return !key.endsWith('|') && key == TrackMatch::songKey(b);
 }
 
 void PlaylistManager::removeFromPlaylist(const QString& playlistName, const QString& trackId) {

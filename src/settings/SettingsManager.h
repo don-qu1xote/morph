@@ -36,13 +36,18 @@ public slots:
     // лайки с площадки, куда писать нельзя: только добавляются, см. PlaylistManager::importLikes
     void importServiceLikes(const QString& service, const QVariantList& tracks);
 
-    void createPlaylist(const QString& name, const QString& coverUrl = "");
-    void createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks);
-    void renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl);
+    // что значат возвращаемые значения, см. PlaylistManager
+    bool createPlaylist(const QString& name, const QString& coverUrl = "");
+    QString createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks,
+                                     const QString& source = "");
+    bool renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl);
     void deletePlaylist(const QString& name);
-    void addToPlaylist(const QString& playlistName, const QVariantMap& track);
+    bool addToPlaylist(const QString& playlistName, const QVariantMap& track);
     void removeFromPlaylist(const QString& playlistName, const QString& trackId);
     QVariantMap getPlaylists();
+    QString uniquePlaylistName(const QString& name) const;
+    QString defaultPlaylistName() const;
+    QStringList playlistsWith(const QVariantMap& track) const;
 
     void setYandexToken(const QString& token);
     QString getYandexToken();

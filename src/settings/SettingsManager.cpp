@@ -116,20 +116,24 @@ QVariantList SettingsManager::getLikedTracks() {
     return m_playlists->getLikedTracks();
 }
 
-void SettingsManager::createPlaylist(const QString& name, const QString& coverUrl) {
-    m_playlists->createPlaylist(name, coverUrl);
+bool SettingsManager::createPlaylist(const QString& name, const QString& coverUrl) {
+    if (!m_playlists->createPlaylist(name, coverUrl)) return false;
     save();
+    return true;
 }
 
-void SettingsManager::createPlaylistWithTracks(const QString& name, const QString& coverUrl, const QVariantList& tracks) {
-    m_playlists->createPlaylistWithTracks(name, coverUrl, tracks);
+QString SettingsManager::createPlaylistWithTracks(const QString& name, const QString& coverUrl,
+                                                  const QVariantList& tracks, const QString& source) {
+    QString saved = m_playlists->createPlaylistWithTracks(name, coverUrl, tracks, source);
     save();
+    return saved;
 }
 
-void SettingsManager::renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl) {
-    m_playlists->renamePlaylist(oldName, newName, coverUrl);
+bool SettingsManager::renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl) {
+    if (!m_playlists->renamePlaylist(oldName, newName, coverUrl)) return false;
     save();
-    if (oldName != newName) emit playlistRenamed(oldName, newName);
+    if (oldName != newName.trimmed()) emit playlistRenamed(oldName, newName.trimmed());
+    return true;
 }
 
 void SettingsManager::deletePlaylist(const QString& name) {
@@ -137,9 +141,22 @@ void SettingsManager::deletePlaylist(const QString& name) {
     save();
 }
 
-void SettingsManager::addToPlaylist(const QString& playlistName, const QVariantMap& track) {
-    m_playlists->addToPlaylist(playlistName, track);
+bool SettingsManager::addToPlaylist(const QString& playlistName, const QVariantMap& track) {
+    if (!m_playlists->addToPlaylist(playlistName, track)) return false;
     save();
+    return true;
+}
+
+QString SettingsManager::uniquePlaylistName(const QString& name) const {
+    return m_playlists->uniqueName(name);
+}
+
+QString SettingsManager::defaultPlaylistName() const {
+    return m_playlists->defaultName();
+}
+
+QStringList SettingsManager::playlistsWith(const QVariantMap& track) const {
+    return m_playlists->playlistsWith(track);
 }
 
 void SettingsManager::removeFromPlaylist(const QString& playlistName, const QString& trackId) {
