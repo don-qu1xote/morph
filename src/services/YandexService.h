@@ -31,6 +31,9 @@ public:
     void streamAs(const QString& yandexId, const QString& trackId);
     // треки по запросу; при ошибке пустой список, ответ приходит всегда
     void searchTracks(const QString& text, std::function<void(const QVariantList&)> found);
+    // плейлисты, найденные по тексту: uid владельца, kind и title
+    void searchPlaylists(const QString& text, std::function<void(const QVariantList&)> found);
+    void playlistTracks(const QString& uid, const QString& kind, std::function<void(const QVariantList&)> found);
     // похожие на трек, как блок «Похожие треки» в приложении Яндекса
     void similarTracks(const QString& trackId, std::function<void(const QVariantList&)> found);
     // последние альбомы артиста, новые первыми

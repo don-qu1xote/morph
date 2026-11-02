@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QSet>
 #include <algorithm>
 #include <memory>
@@ -35,6 +36,10 @@ static const int kReleaseAlbums = 8;
 static const double kMixNewShare = 0.35;
 // артиста, которого ты пропускаешь, в миксы не зовём
 static const double kDislikedArtist = -0.3;
+// сколько треков плейлиста берётся в образцы для подбора
+static const int kSuggestSeeds = 3;
+// из скольких найденных по названию плейлистов брать треки
+static const int kTitlePlaylists = 2;
 
 // одно и то же значение на любой машине и в любой версии Qt (FNV-1a)
 static quint32 stableHash(const QString& text, int salt) {
@@ -498,6 +503,88 @@ void MorphMixes::similarTo(const QVariantList& seeds, int soundcloudSeeds, Track
                                   if (filter) filter->process(tracks, "SoundCloud", collect);
                                   else collect(tracks);
                               });
+}
+
+// По названию-заглушке вроде My Playlist #3 искать нечего
+static bool saysSomething(const QString& name) {
+    static const QRegularExpression placeholder("^my playlist( #?\\d+)?$", QRegularExpression::CaseInsensitiveOption);
+    QString clean = name.trimmed();
+    return !clean.isEmpty() && !placeholder.match(clean).hasMatch();
+}
+
+void MorphMixes::suggest(const QString& name, const QVariantList& tracks, int count, Suggestions done) {
+    QSet<QString> present;
+    for (const QVariant& t : tracks) present.insert(TrackMatch::songKey(t.toMap()));
+
+    auto finish = [this, present, count, done](const QVariantList& found, const QString& basis) {
+        QVariantList fresh;
+        QSet<QString> seen = present;
+        for (const QVariant& v : found) {
+            QVariantMap t = v.toMap();
+            // в больших плейлистах Яндекс отдаёт часть треков без данных
+            if (t["title"].toString().isEmpty()) continue;
+            QString key = TrackMatch::songKey(t);
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            fresh.append(t);
+        }
+        done(rec->rank(fresh, count), basis);
+    };
+
+    if (!tracks.isEmpty()) {
+        // образцы случайные, поэтому REFRESH даёт другое. Треки с версией в
+        // Яндексе вперёд: по ним есть похожее
+        QVariantList pick = tracks;
+        std::shuffle(pick.begin(), pick.end(), *QRandomGenerator::global());
+        std::stable_partition(pick.begin(), pick.end(),
+                              [this](const QVariant& t) { return !yandexIdOf(t.toMap()).isEmpty(); });
+        similarTo(pick.mid(0, kSuggestSeeds), 1, [finish](const QVariantList& found) { finish(found, "contents"); });
+        return;
+    }
+    if (saysSomething(name)) {
+        byTitle(name, [finish](const QVariantList& found) { finish(found, "title"); });
+        return;
+    }
+    QVariantList favourites = seeds(kSuggestSeeds);
+    if (favourites.isEmpty()) {
+        done({}, "taste");
+        return;
+    }
+    similarTo(favourites, 1, [finish](const QVariantList& found) { finish(found, "taste"); });
+}
+
+// Плейлисты с таким же названием собраны людьми под то же настроение, поэтому
+// их треки ближе к задумке, чем песни, у которых это просто в названии. Без
+// Яндекса остаётся поиск по SoundCloud
+void MorphMixes::byTitle(const QString& name, Tracks done) {
+    if (!yandex->hasToken()) {
+        soundcloud->searchTracks(name, kListSize, [this, done](const QVariantList& found) {
+            if (filter) filter->process(found, "SoundCloud", done);
+            else done(found);
+        });
+        return;
+    }
+
+    // два поиска, а потом ещё треки каждого найденного плейлиста
+    struct Gather {
+        int pending = 2;
+        QVariantList found;
+    };
+    auto gather = std::make_shared<Gather>();
+    auto collect = [gather, done](const QVariantList& tracks) {
+        gather->found += tracks;
+        if (--gather->pending == 0) done(gather->found);
+    };
+    yandex->searchTracks(name, collect);
+    yandex->searchPlaylists(name, [this, gather, collect](const QVariantList& playlists) {
+        int take = qMin(kTitlePlaylists, int(playlists.size()));
+        gather->pending += take;
+        for (int i = 0; i < take; ++i) {
+            QVariantMap p = playlists[i].toMap();
+            yandex->playlistTracks(p["uid"].toString(), p["kind"].toString(), collect);
+        }
+        collect({});
+    });
 }
 
 QVariantMap MorphMixes::card(const QString& id, const QString& name, const QString& subtitle,

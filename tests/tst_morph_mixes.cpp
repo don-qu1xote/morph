@@ -89,6 +89,21 @@ class TestMorphMixes : public QObject {
         w.now += 5 * 3600;
     }
 
+    // ответ suggest, пойманный в тесте
+    struct Suggested {
+        QVariantList tracks;
+        QString basis;
+        bool done = false;
+    };
+
+    static MorphMixes::Suggestions into(Suggested& out) {
+        return [&out](const QVariantList& tracks, const QString& basis) {
+            out.tracks = tracks;
+            out.basis = basis;
+            out.done = true;
+        };
+    }
+
 private slots:
     void initTestCase() { qputenv("MORPH_YANDEX_API", api.url().toUtf8()); }
 
@@ -230,6 +245,68 @@ private slots:
         QCOMPARE(ids(ready[0][2].toList()), QStringList({"51", "52"}));
         QCOMPARE(ready[0][1].toString(), QString("https://c/400x400"));
         QVERIFY(api.requestsTo("/albums/6/with-tracks").isEmpty());
+    }
+
+    // пустой плейлист с названием: треки плейлистов Яндекса с таким названием и песни с ним
+    void emptyPlaylistIsFilledByTitle() {
+        World w(dir.path());
+        api.on("GET", "/search", [](const HttpRequest& r) {
+            if (r.query.queryItemValue("type") == "playlist") {
+                QJsonObject found{{"owner", QJsonObject{{"uid", 5}}}, {"kind", 7}, {"title", "Night Drive"}};
+                return jsonResult(QJsonObject{{"playlists", QJsonObject{{"results", QJsonArray{found}}}}});
+            }
+            return jsonResult(QJsonObject{
+                {"tracks", QJsonObject{{"results", QJsonArray{yandexJson(61, "Searched", "Night Drive")}}}}});
+        });
+        api.on("GET", "/users/5/playlists/7", [](const HttpRequest&) {
+            // третий трек без данных, как в больших плейлистах Яндекса
+            QJsonArray tracks{QJsonObject{{"id", 71}, {"track", yandexJson(71, "Synth A")}},
+                              QJsonObject{{"id", 72}, {"track", yandexJson(72, "Synth B")}}, QJsonObject{{"id", 73}}};
+            return jsonResult(QJsonObject{{"title", "Night Drive"}, {"tracks", tracks}});
+        });
+
+        Suggested got;
+        w.mixes.suggest("Night Drive", {}, 10, into(got));
+        QTRY_VERIFY(got.done);
+        QCOMPARE(got.basis, QString("title"));
+        QStringList found = ids(got.tracks);
+        std::sort(found.begin(), found.end());
+        QCOMPARE(found, QStringList({"61", "71", "72"}));
+
+        // у названия-заглушки искать нечего: подбор по вкусу, без поиска
+        int searches = api.requestsTo("/search").size();
+        Suggested placeholder;
+        w.mixes.suggest("My Playlist #2", {}, 10, into(placeholder));
+        QTRY_VERIFY(placeholder.done);
+        QCOMPARE(placeholder.basis, QString("taste"));
+        QCOMPARE(api.requestsTo("/search").size(), searches);
+    }
+
+    // в плейлисте есть треки: похожее на них, но без того, что там уже лежит
+    void suggestionsSkipWhatIsAlreadyThere() {
+        World w(dir.path());
+        auto similar = [](const HttpRequest&) {
+            QJsonArray tracks{yandexJson(2, "Fav", "Two"), yandexJson(81, "Newcomer", "Fresh"),
+                              yandexJson(82, "Stranger", "Other")};
+            return jsonResult(QJsonObject{{"similarTracks", tracks}});
+        };
+        api.on("GET", "/tracks/1/similar", similar);
+        api.on("GET", "/tracks/2/similar", similar);
+
+        QVariantList playlist{track("1", "Fav", "One"), track("2", "Fav", "Two")};
+        Suggested got;
+        w.mixes.suggest("Road", playlist, 10, into(got));
+        QTRY_VERIFY(got.done);
+        QCOMPARE(got.basis, QString("contents"));
+        QStringList found = ids(got.tracks);
+        std::sort(found.begin(), found.end());
+        QCOMPARE(found, QStringList({"81", "82"}));
+        QVERIFY(api.requestsTo("/search").isEmpty());
+
+        Suggested two;
+        w.mixes.suggest("Road", playlist, 1, into(two));
+        QTRY_VERIFY(two.done);
+        QCOMPARE(two.tracks.size(), 1);
     }
 
     // давно не звучавшие лайки, порядок держится всю неделю

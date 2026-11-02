@@ -45,6 +45,14 @@ public:
     // с ним веса, пока метки не перестанут меняться
     QList<QStringList> artistGroups() const;
 
+    // Что добавить в плейлист. С треками: похожее на несколько из них. Пустой с
+    // названием: треки из плейлистов Яндекса с таким названием и песни с ним.
+    // Пустой без названия (My Playlist #3): похожее на то, что ты любишь.
+    // Того, что в плейлисте уже есть, в ответе нет, порядок решает своя модель.
+    // basis: contents, title или taste, по чему подобрано
+    using Suggestions = std::function<void(const QVariantList& tracks, const QString& basis)>;
+    void suggest(const QString& name, const QVariantList& tracks, int count, Suggestions done);
+
 signals:
     void ready(const QString& name, const QString& coverUrl, const QVariantList& tracks);
     void failed(const QString& message);
@@ -65,6 +73,8 @@ private:
     void buildReleaseRadar();
     // похожее на seeds из Яндекса и SoundCloud, все ответы разом
     void similarTo(const QVariantList& seeds, int soundcloudSeeds, Tracks done);
+    // кандидаты по названию плейлиста
+    void byTitle(const QString& name, Tracks done);
 
     static QVariantMap card(const QString& id, const QString& name, const QString& subtitle,
                             const QVariantList& tracks);

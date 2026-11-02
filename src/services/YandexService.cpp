@@ -377,6 +377,46 @@ void YandexService::searchTracks(const QString& text, std::function<void(const Q
         false);
 }
 
+void YandexService::searchPlaylists(const QString& text, std::function<void(const QVariantList&)> found) {
+    if (m_token.isEmpty()) {
+        found({});
+        return;
+    }
+
+    QUrl url(m_api + "/search");
+    QUrlQuery q;
+    q.addQueryItem("text", text);
+    q.addQueryItem("type", "playlist");
+    q.addQueryItem("page", "0");
+    url.setQuery(q);
+
+    net->get(
+        url, yandexHeaders(m_token),
+        [found](QNetworkReply* reply) {
+            const QJsonArray results = QJsonDocument::fromJson(reply->readAll())
+                                           .object()["result"]
+                                           .toObject()["playlists"]
+                                           .toObject()["results"]
+                                           .toArray();
+            QVariantList playlists;
+            if (reply->error() == QNetworkReply::NoError) {
+                for (const auto& r : results) {
+                    QJsonObject p = r.toObject();
+                    playlists.append(QVariantMap{{"uid", p["owner"].toObject()["uid"].toVariant().toString()},
+                                                 {"kind", p["kind"].toVariant().toString()},
+                                                 {"title", p["title"].toString()}});
+                }
+            }
+            found(playlists);
+        },
+        false);
+}
+
+void YandexService::playlistTracks(const QString& uid, const QString& kind,
+                                   std::function<void(const QVariantList&)> found) {
+    getTracks(QUrl(QString("%1/users/%2/playlists/%3").arg(m_api, uid, kind)), "tracks", found);
+}
+
 void YandexService::similarTracks(const QString& trackId, std::function<void(const QVariantList&)> found) {
     getTracks(QUrl(QString("%1/tracks/%2/similar").arg(m_api, trackId)), "similarTracks", found);
 }

@@ -13,6 +13,8 @@
 static const int kLinksPerRun = 40;
 // лайков в SoundCloud за запуск: тысяча песен MAIN разойдётся за несколько дней
 static const int kSoundCloudWritesPerRun = 60;
+// столько треков предлагается добавить в плейлист за раз
+static const int kSuggestions = 10;
 static const int kLinkPauseMs = 1500;
 // та же песня с уверенностью, как у фолбэка: иначе лайк уйдёт не тому треку
 static const double kLinkScore = 0.85;
@@ -326,6 +328,12 @@ void ServiceManager::openAlbum(const QVariantMap& album) {
         QString coverUrl = album["coverUrl"].toString();
         if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
         emit playlistImported(album["title"].toString(), coverUrl, tracks);
+    });
+}
+
+void ServiceManager::playlistSuggestions(const QString& name, const QVariantList& tracks) {
+    m_mixes->suggest(name, tracks, kSuggestions, [this, name](const QVariantList& found, const QString& basis) {
+        emit playlistSuggestionsReady(name, found, basis);
     });
 }
 

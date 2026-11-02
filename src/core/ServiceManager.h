@@ -47,6 +47,8 @@ public slots:
     void openAlbum(const QVariantMap& album);
     // волна по трекам плейлиста; дальше getWave просит её же, пока не начнётся другая
     void startPlaylistWave(const QVariantList& tracks);
+    // что добавить в плейлист name, ответ в playlistSuggestionsReady
+    void playlistSuggestions(const QString& name, const QVariantList& tracks);
     // Поиск и сортировка внутри плейлиста. Все слова filter должны найтись в
     // названии, артисте или альбоме. sort: custom, title, artist, plays, duration
     QVariantList arrangeTracks(const QVariantList& tracks, const QString& filter, const QString& sort) const;
@@ -115,6 +117,8 @@ signals:
     // name, imageUrl, genres, listeners, popular, albums, similar и своё:
     // yours (песни из MAIN), inMain, plays; requestedName как в fetchArtist
     void artistReady(const QVariantMap& artist);
+    // basis: contents (по трекам плейлиста), title (по названию) или taste (по вкусу)
+    void playlistSuggestionsReady(const QString& name, const QVariantList& tracks, const QString& basis);
 
 private:
     void attach(BaseService* service);
