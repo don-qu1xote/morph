@@ -103,13 +103,11 @@ ApplicationWindow {
     property bool isPreviewRunning: previewLoader.status === Loader.Ready
     property string currentPlaylist: ""
     property string searchSource: "all"
-    property string oldPlaylistName: ""
     // ссылка последнего импорта: по ней повторный импорт находит свой плейлист
     property string importSource: ""
     property string librarySubView: "grid"
     property string settingsSubView: "main"
 
-    property bool isEditingPlaylist: false
     property bool saveLastImport: true
     property int likesVersion: 0
     property int playlistsVersion: 0
@@ -534,6 +532,116 @@ ApplicationWindow {
         interval: 1500
         onTriggered: refreshRecent()
     }
+    // Окно плейлиста и подбор под треками. dialogTracks уходят в новый плейлист:
+    // трек из меню ADD TO PLAYLIST или весь список при SAVE AS PLAYLIST
+    property var dialogTracks: []
+    // плейлисты, где уже есть трек из меню: в списке у них галочка
+    property var pickerHas: []
+    property var suggestions: []
+    property string suggestionsBasis: ""
+    property bool suggestionsLoading: false
+    property string suggestionsFor: ""
+    readonly property bool isUserPlaylist: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && MorphSettings.getPlaylists()[currentPlaylist] !== undefined)
+
+    // служебные списки при сохранении называются по-человечески
+    function listTitle(name) {
+        if (name === "CHARTS") return "Top of Yandex Music"
+        if (name === "RECENTLY PLAYED") return "Recently Played"
+        return name
+    }
+
+    // mode: create, edit или save
+    function openPlaylistDialog(mode, tracks, suggestedName) {
+        dialogTracks = tracks || []
+        var pls = MorphSettings.getPlaylists()
+        var name = MorphSettings.defaultPlaylistName()
+        if (mode === "edit") name = currentPlaylist
+        else if (suggestedName) name = MorphSettings.uniquePlaylistName(suggestedName)
+        var cover = mode === "edit" && pls[currentPlaylist] ? (pls[currentPlaylist].coverUrl || "") : ""
+        var line = ""
+        if (mode === "save") line = dialogTracks.length === 1 ? "1 track will be saved" : dialogTracks.length + " tracks will be saved"
+        else if (mode === "create" && dialogTracks.length === 1) line = "Starts with " + dialogTracks[0].title + " by " + dialogTracks[0].artist
+        playlistDialog.pinterestReady = MorphServices.hasCovers()
+        playlistDialog.openWith(mode, name, cover, Object.keys(pls), line)
+    }
+
+    function playlistDialogAccepted(name, coverUrl) {
+        var mode = playlistDialog.mode
+        var cover = coverUrl
+        if (cover === "" && MorphServices.hasCovers()) cover = MorphServices.newCover("playlist:" + name)
+
+        if (mode === "edit") {
+            var oldName = playlistDialog.originalName
+            if (!MorphSettings.renamePlaylist(oldName, name, cover)) {
+                showToast("You already have a playlist named " + name)
+                return
+            }
+            currentPlaylist = name
+            showToast(name === oldName ? "Playlist saved" : "Playlist renamed")
+            return
+        }
+
+        var saved = name
+        if (mode === "save") {
+            saved = MorphSettings.createPlaylistWithTracks(name, cover, dialogTracks)
+        } else {
+            if (!MorphSettings.createPlaylist(name, cover)) {
+                showToast("You already have a playlist named " + name)
+                return
+            }
+            // из меню трека: плейлист с этим треком, а ты остаёшься, где был
+            if (dialogTracks.length === 1) {
+                MorphSettings.addToPlaylist(saved, dialogTracks[0])
+                showToast("Added to " + saved)
+                return
+            }
+        }
+        showToast(mode === "save" ? "Saved as " + saved : "Playlist " + saved + " created")
+        currentView = "library"
+        openPlaylist(saved)
+    }
+
+    function requestSuggestions() {
+        if (!isUserPlaylist) return
+        var pls = MorphSettings.getPlaylists()
+        suggestionsFor = currentPlaylist
+        suggestionsLoading = true
+        MorphServices.playlistSuggestions(currentPlaylist, pls[currentPlaylist].tracks || [])
+    }
+
+    function addSuggestion(index) {
+        var t = suggestions[index]
+        if (MorphSettings.addToPlaylist(currentPlaylist, t)) showToast("Added to " + currentPlaylist)
+        var rest = suggestions.slice()
+        rest.splice(index, 1)
+        suggestions = rest
+        // почти всё разобрали: следующая порция, уже с учётом добавленного
+        if (rest.length < 4) requestSuggestions()
+    }
+
+    // подбор просится, когда плейлист открыт, а не на каждое переключение подряд
+    Timer {
+        id: suggestionsTimer
+        interval: 300
+        onTriggered: requestSuggestions()
+    }
+
+    Connections {
+        target: MorphServices
+        function onPlaylistSuggestionsReady(name, tracks, basis) {
+            if (name !== suggestionsFor) return
+            var list = []
+            for (var i = 0; i < tracks.length; i++) {
+                var t = tracks[i]
+                if (!t.service) t.service = "Yandex"
+                if (t.durationMs === undefined) t.durationMs = 0
+                list.push(t)
+            }
+            suggestions = list
+            suggestionsBasis = basis
+            suggestionsLoading = false
+        }
+    }
     function getServiceIcon(serviceName) {
         if (serviceName === "Yandex") return "qrc:/assets/yandex_music_icon.svg"
         if (serviceName === "SoundCloud") return "qrc:/assets/soundcloud_icon.svg"
@@ -605,7 +713,12 @@ ApplicationWindow {
 
     // плейлист, как он пришёл, до поиска и сортировки в строке над треками
     property var playlistSource: []
-    onCurrentPlaylistChanged: resetArrange()
+    onCurrentPlaylistChanged: {
+        resetArrange()
+        suggestions = []
+        suggestionsBasis = ""
+        suggestionsTimer.restart()
+    }
 
     function arrangePlaylist() {
         if (playlistSource.length === 0) playlistSource = fullPlaylistTracks
@@ -1162,12 +1275,7 @@ function playTrack(track, index) {
                                         visible: currentPlaylist !== "" && saveLastImport
                                         Layout.preferredWidth: 32; Layout.preferredHeight: 32
                                         onClicked: (mouse) => {
-                                            var pls = MorphSettings.getPlaylists()
-                                            plNameField.text = currentPlaylist
-                                            oldPlaylistName = currentPlaylist
-                                            plCoverField.text = pls[currentPlaylist].coverUrl || ""
-                                            isEditingPlaylist = true
-                                            createPlaylistPopup.open()
+                                            openPlaylistDialog("edit", [])
                                         }
                                         background: Rectangle { color: "#1a1a1a"; radius: 16 }
                                         contentItem: Item {
@@ -1896,7 +2004,7 @@ function playTrack(track, index) {
                                                     }
                                                     Button {
                                                         text: "NEW PLAYLIST"
-                                                        onClicked: (mouse) => createPlaylistPopup.open()
+                                                        onClicked: (mouse) => openPlaylistDialog("create", [])
                                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                                                         contentItem: Text { text: parent.text; color: "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Bold; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                                                         background: Rectangle { color: "#333"; radius: 6 }
@@ -1962,8 +2070,11 @@ function playTrack(track, index) {
                                                 onWaveWanted: startPlaylistWave()
                                                 canChangeCover: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && MorphSettings.getPlaylists()[currentPlaylist] !== undefined)
                                                 onCoverWanted: newPlaylistCover()
+                                                canSave: !isUserPlaylist && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE"
+                                                onSaveWanted: openPlaylistDialog("save", playlistSource.length > 0 ? playlistSource : fullPlaylistTracks, listTitle(currentPlaylist))
                                             }
                                             Rectangle {
+                                                visible: !(isUserPlaylist && libraryModel.count === 0)
                                                 Layout.fillWidth: true; Layout.preferredHeight: libraryTracksList.contentHeight + 20; color: "#1a1a1a"
                                                 radius: 12
                                                 border.color: "#333"; border.width: 1; clip: true
@@ -1972,6 +2083,17 @@ function playTrack(track, index) {
                                                     anchors.fill: parent; anchors.margins: 10; interactive: false; clip: true
                                                     model: libraryModel; delegate: trackDelegate
                                                 }
+                                            }
+                                            PlaylistSuggestions {
+                                                Layout.fillWidth: true; Layout.topMargin: 10
+                                                visible: isUserPlaylist
+                                                tracks: suggestions; basis: suggestionsBasis; loading: suggestionsLoading
+                                                startingEmpty: libraryModel.count === 0
+                                                textColor: "white"; subtextColor: "#888888"; cardColor: "#1a1a1a"; hoverColor: "#262626"
+                                                borderColor: "#333333"; accentColor: "#b57339"; accentTextColor: "black"; skeletonColor: "#262626"
+                                                fontFamily: mainFont.name
+                                                onAdded: (index) => addSuggestion(index)
+                                                onRefreshWanted: requestSuggestions()
                                             }
                                         }
                                     }
@@ -4137,6 +4259,7 @@ function playTrack(track, index) {
                         } else {
                             playlistPickerPopup.y = trackContextMenu.y
                         }
+                        pickerHas = MorphSettings.playlistsWith(targetContextTrack)
                         playlistPickerPopup.open()
                     }
                 }
@@ -4191,7 +4314,7 @@ function playTrack(track, index) {
     Popup {
         id: playlistPickerPopup
         parent: Overlay.overlay
-        width: 180; height: Math.min(300, (playlistsModel.count * 40) + 10)
+        width: 180; height: Math.min(340, (playlistsModel.count + 1) * 40 + 10)
         padding: 5
         background: Rectangle { color: "#1a1a1a"; radius: 12; border.color: "#333"; border.width: 1 }
         closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
@@ -4199,6 +4322,23 @@ function playTrack(track, index) {
         ListView {
             anchors.fill: parent
             model: playlistsModel
+            header: Rectangle {
+                width: 170; height: 40; radius: 8
+                color: newPlaylistMouse.containsMouse ? "#3d2b1f" : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "+ NEW PLAYLIST"; color: "#b57339"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black
+                }
+                MouseArea {
+                    id: newPlaylistMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        var t = targetContextTrack
+                        playlistPickerPopup.close()
+                        trackContextMenu.close()
+                        if (t && t.id !== "") openPlaylistDialog("create", [t])
+                    }
+                }
+            }
             clip: true
             delegate: Rectangle {
                 width: 170; height: 40; color: plItemMouse.containsMouse ? "#3d2b1f" : "transparent"; radius: 8
@@ -4206,6 +4346,12 @@ function playTrack(track, index) {
                     anchors.centerIn: parent; width: parent.width - 20
                     text: model.name; color: plItemMouse.containsMouse ? "#b57339" : "white"; font.family: mainFont.name; font.pixelSize: 12; font.weight: Font.Black
                     elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter
+                }
+                Image {
+                    anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                    width: 14; height: 14; source: "qrc:/assets/check.svg"; sourceSize: Qt.size(28, 28)
+                    visible: pickerHas.indexOf(model.name) !== -1
+                    layer.enabled: true; layer.effect: ColorOverlay { color: "#b57339" }
                 }
                 MouseArea {
                     id: plItemMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -4522,6 +4668,8 @@ function playTrack(track, index) {
         onPlayQueued: (index) => playTrack(MorphQueue.takeUpTo(index), currentTrackIndex)
         onRemoveQueued: (index) => MorphQueue.remove(index)
         onClearQueue: MorphQueue.clear()
+        canSaveContext: !isUserPlaylist && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && libraryModel.count > 0
+        onSaveContext: openPlaylistDialog("save", playlistSource.length > 0 ? playlistSource : fullPlaylistTracks, listTitle(currentPlaylist))
         onPlayUpcoming: (offset) => {
             var index = currentTrackIndex + 1 + offset
             playTrack(playingModel().get(index), index)
@@ -4594,55 +4742,12 @@ function playTrack(track, index) {
         }
     }
 
-    Popup {
-        id: createPlaylistPopup
-        parent: Overlay.overlay
-        x: (parent.width - width) / 2; y: (parent.height - height) / 2
-        width: 300; height: 250; modal: true; focus: true
-        background: Rectangle { color: "#1a1a1a"; radius: 12; border.color: "#333" }
-        
-        ColumnLayout {
-            anchors.fill: parent; anchors.margins: 20; spacing: 15
-            Text { text: isEditingPlaylist ? "EDIT PLAYLIST" : "CREATE PLAYLIST"; color: "white"; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Bold }
-            TextField {
-                placeholderTextColor: "#666"
-                id: plNameField; placeholderText: "PLAYLIST NAME"; Layout.fillWidth: true
-                color: "white"; font.family: mainFont.name; font.pixelSize: 12; padding: 10
-                background: Rectangle { color: "#111"; radius: 6; border.color: "#333" }
-            }
-            TextField {
-                placeholderTextColor: "#666"
-                id: plCoverField; placeholderText: "COVER URL (IMGUR/PINTEREST)"; Layout.fillWidth: true
-                color: "white"; font.family: mainFont.name; font.pixelSize: 12; padding: 10
-                background: Rectangle { color: "#111"; radius: 6; border.color: "#333" }
-            }
-            Button {
-                text: isEditingPlaylist ? "SAVE" : "CREATE"; Layout.fillWidth: true; Layout.preferredHeight: 40
-                onClicked: (mouse) => {
-                    if (plNameField.text !== "") {
-                        if (isEditingPlaylist) {
-                            if (!MorphSettings.renamePlaylist(oldPlaylistName, plNameField.text, plCoverField.text)) {
-                                showToast("You already have a playlist named " + plNameField.text.trim())
-                                return
-                            }
-                            currentPlaylist = plNameField.text.trim()
-                            showToast("Playlist renamed")
-                        } else {
-                            if (!MorphSettings.createPlaylist(plNameField.text, plCoverField.text)) {
-                                showToast("You already have a playlist named " + plNameField.text.trim())
-                                return
-                            }
-                            showToast("Playlist " + plNameField.text.trim() + " created")
-                        }
-                        plNameField.text = ""; plCoverField.text = ""; createPlaylistPopup.close()
-                    }
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
-                contentItem: Text { text: parent.text; color: "black"; font.family: mainFont.name; font.weight: Font.Bold; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: "white"; radius: 6 }
-            }
-        }
-        onClosed: { isEditingPlaylist = false; oldPlaylistName = "" }
+    PlaylistDialog {
+        id: playlistDialog
+        textColor: "white"; subtextColor: "#888888"; cardColor: "#1a1a1a"; fieldColor: "#111111"
+        borderColor: "#333333"; accentColor: "#b57339"; accentTextColor: "black"
+        fontFamily: mainFont.name
+        onAccepted: (name, coverUrl) => playlistDialogAccepted(name, coverUrl)
     }
 
     Popup {

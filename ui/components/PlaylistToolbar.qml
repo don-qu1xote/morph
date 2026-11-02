@@ -21,9 +21,12 @@ Item {
     property string fontFamily: ""
     // свой плейлист morph: ему можно поставить новую обложку с доски Pinterest
     property bool canChangeCover: false
+    // список, который ещё не плейлист: альбом, микс, чарты, недавнее
+    property bool canSave: false
 
     signal waveWanted
     signal coverWanted
+    signal saveWanted
     // фильтр или сортировка поменялись, список пора пересобрать
     signal arrangeChanged
 
@@ -97,6 +100,47 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.waveWanted()
+            }
+        }
+
+        Rectangle {
+            visible: root.canSave
+            implicitWidth: saveRow.implicitWidth + 24
+            implicitHeight: 34
+            radius: 17
+            color: saveMouse.containsMouse ? root.fieldColor : "transparent"
+            border.color: root.borderColor
+            border.width: 1
+
+            RowLayout {
+                id: saveRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                Image {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    source: "qrc:/assets/plus-box.svg"
+                    sourceSize: Qt.size(28, 28)
+                    layer.enabled: true
+                    layer.effect: ColorOverlay { color: root.textColor }
+                }
+
+                Text {
+                    text: "SAVE AS PLAYLIST"
+                    color: root.textColor
+                    font.family: root.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.Black
+                }
+            }
+
+            MouseArea {
+                id: saveMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.saveWanted()
             }
         }
 

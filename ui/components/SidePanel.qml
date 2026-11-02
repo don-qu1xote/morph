@@ -14,6 +14,8 @@ Popup {
     property var queued: []
     property var upcoming: []
     property string contextName: ""
+    // то, что играет, ещё не плейлист: альбом, микс, чарты, недавнее
+    property bool canSaveContext: false
     // [{timeMs, text}]; lyricsState: "loading", "ready" или "missing"
     property var lyricsLines: []
     property bool lyricsSynced: false
@@ -31,6 +33,7 @@ Popup {
     signal playQueued(int index)
     signal removeQueued(int index)
     signal clearQueue
+    signal saveContext
     signal playUpcoming(int offset)
     // текст нужен: открыли вкладку или сменился трек, пока она открыта
     signal lyricsWanted
@@ -101,6 +104,24 @@ Popup {
             }
 
             Item { Layout.fillWidth: true }
+
+            Text {
+                visible: root.tab === "queue" && root.canSaveContext
+                text: "SAVE AS PLAYLIST"
+                color: saveMouse.containsMouse ? root.accentColor : root.subtextColor
+                font.family: root.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Black
+
+                MouseArea {
+                    id: saveMouse
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.saveContext()
+                }
+            }
 
             Text {
                 visible: root.tab === "queue" && root.queued.length > 0

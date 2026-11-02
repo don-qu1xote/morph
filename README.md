@@ -34,7 +34,10 @@
 - **For You**: Yandex personal playlists (Playlist of the Day, Premiere, Deja Vu, Stash) and fresh editorial picks on the home screen, next to SoundCloud daily mixes.
 - **Artist Pages**: Photo, genres and monthly listeners, popular tracks, the artist's songs in your MAIN and how often you play them, the discography (an album opens as a playlist) and similar artists you can jump to. One click starts the artist wave. Open it from an artist name or from the track menu (**ARTIST PAGE**) in every theme; artists missing from Yandex get a page from SoundCloud.
 - **Advanced Playlist Management**:
-  - Create, rename, and delete custom playlists.
+  - Create, rename, and delete custom playlists. A new playlist opens right away with a free name like My Playlist #1 that you can type over; a name that is already taken is flagged before you press the button.
+  - **+ NEW PLAYLIST** at the top of **ADD TO PLAYLIST** creates a playlist with that track, and playlists that already have it are ticked. The same song is never added to a playlist twice, even from another service.
+  - **SAVE AS PLAYLIST** (above the tracks and in the queue panel) keeps what is open or playing: an album, a morph mix, the charts or Recently Played. Importing the same link again refreshes that playlist instead of making a second one.
+  - **Recommended** under every playlist: tracks similar to what is in it, ordered by Personal Ranking. An empty playlist gets tracks picked by its name from Yandex playlists with the same title, or by your taste while it is still called My Playlist. **ADD** puts a track in, **REFRESH** gives a new set.
   - Set custom cover images using external URLs (Imgur, Pinterest, etc.).
   - **Pinterest covers**: point morph at one of your Pinterest boards (token and board in Settings) and every playlist without a custom cover, every morph mix and every **NEW COVER** click gets a picture from it that no other playlist has had yet.
   - Easily add tracks from search, charts, or history directly into your playlists.

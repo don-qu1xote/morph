@@ -17,6 +17,8 @@
     <file>ui/components/RecentRow.qml</file>
     <file>ui/components/VibeBackdrop.qml</file>
     <file>ui/components/MainCard.qml</file>
+    <file>ui/components/PlaylistDialog.qml</file>
+    <file>ui/components/PlaylistSuggestions.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
     <file>assets/cog.svg</file>
