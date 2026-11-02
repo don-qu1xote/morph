@@ -120,6 +120,11 @@ void Recommender::saveRanker() {
     m_unsaved = 0;
 }
 
+bool Recommender::isExternal(const QVariantMap& track) {
+    QString via = track["via"].toString();
+    return via == "SoundCloud" || via == "YouTube";
+}
+
 bool Recommender::isNew(const QVariantMap& track) const {
     return !m_profile.known(TrackMatch::artistKey(track)) && !m_liked.contains(TrackMatch::songKey(track));
 }
@@ -146,6 +151,9 @@ Ranker::Features Recommender::features(const QVariantMap& track) const {
 
     QString service = track["service"].toString();
     if (!service.isEmpty()) x.append({"src:" + service, 1});
+    // откуда совет и откуда звук это разное: похожее с SoundCloud может играть из Яндекса
+    QString via = track["via"].toString();
+    if (!via.isEmpty()) x.append({"via:" + via, 1});
     qint64 ms = track["durationMs"].toLongLong();
     if (ms > 0) x.append({"len", qBound(-1.5, (ms / 1000.0 - 200) / 120, 1.5)});
     // свой вес у каждого артиста и у артиста в это время суток: утром одно, ночью другое
@@ -163,37 +171,56 @@ QVariantList Recommender::rank(const QVariantList& candidates, int count, bool e
         QString artist;
         double p;
         bool fresh;
+        bool external;
     };
     QList<Scored> pool;
     for (const QVariant& v : candidates) {
         QVariantMap t = v.toMap();
-        pool.append({t, TrackMatch::artistKey(t), m_ranker.predict(features(t), explore), isNew(t)});
+        pool.append({t, TrackMatch::artistKey(t), m_ranker.predict(features(t), explore), isNew(t), isExternal(t)});
     }
     std::stable_sort(pool.begin(), pool.end(), [](const Scored& a, const Scored& b) { return a.p > b.p; });
 
     QVariantList out;
     QStringList recent;
     int fresh = 0;
+    int external = 0;
     auto fits = [&recent](const Scored& s) {
         if (!recent.isEmpty() && recent.last() == s.artist) return false;
         return recent.mid(qMax(0, recent.size() - kArtistWindow + 1)).count(s.artist) < kArtistPerWindow;
     };
 
     while (out.size() < count && !pool.isEmpty()) {
-        // сколько незнакомых должно быть к этому месту: 0.3 даёт по три на десять
+        // сколько незнакомых должно быть к этому месту: 0.3 даёт по три на десять.
+        // Доля SoundCloud и YouTube это нижняя граница: больше можно, меньше нет
         bool wantFresh = fresh < int(std::floor(share * (out.size() + 1)));
+        bool wantExternal = external < int(std::floor(m_externalShare * (out.size() + 1)));
+        auto suits = [&](const Scored& s, int pass) {
+            bool sourceOk = !wantExternal || s.external;
+            switch (pass) {
+            case 0:
+                return sourceOk && s.fresh == wantFresh && fits(s);
+            case 1:
+                return sourceOk && fits(s);
+            case 2:
+                return s.fresh == wantFresh && fits(s);
+            case 3:
+                return fits(s);
+            default:
+                return true;
+            }
+        };
         int pick = -1;
-        // по порядку: нужный вид и разнообразие, любой вид и разнообразие, что есть
-        for (int pass = 0; pass < 3 && pick < 0; ++pass) {
+        // по порядку: обе доли и разнообразие, доля площадок, доля нового, разнообразие, что есть
+        for (int pass = 0; pass < 5 && pick < 0; ++pass) {
             for (int i = 0; i < pool.size(); ++i) {
-                if (pass == 0 && pool[i].fresh != wantFresh) continue;
-                if (pass < 2 && !fits(pool[i])) continue;
+                if (!suits(pool[i], pass)) continue;
                 pick = i;
                 break;
             }
         }
         Scored s = pool.takeAt(pick);
         if (s.fresh) ++fresh;
+        if (s.external) ++external;
         recent.append(s.artist);
         out.append(s.track);
     }

@@ -31,6 +31,13 @@ QVariantMap fromQuery(const QString& query);
 // обратно в строку для поиска
 QString query(const QVariantMap& track);
 
+// Подпись в порядок: артист из «Артист - Песня» в названии, без пометок вроде
+// (Official Video) или [Премьера клипа]. Скобки с версией и гостями остаются
+QVariantMap cleaned(const QVariantMap& track);
+
+// ремикс, лайв, кавер, slowed и прочие не студийные версии
+bool isOtherVersion(const QVariantMap& track);
+
 // запрос для поиска на другой площадке: первый артист и название без скобок,
 // даже если у ютубовского клипа артист записан в самом названии
 QString searchQuery(const QVariantMap& track);

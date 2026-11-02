@@ -1,5 +1,6 @@
 #include "WaveMixer.h"
 #include "TrackMatch.h"
+#include "CandidateFilter.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
 #include <QRandomGenerator>
@@ -19,12 +20,16 @@ static const qint64 kMaxDurationMs = 15 * 60 * 1000;
 WaveMixer::WaveMixer(SoundCloudService* soundcloud, YouTubeService* youtube, QObject* parent)
     : QObject(parent), soundcloud(soundcloud), youtube(youtube) {
     connect(soundcloud, &SoundCloudService::relatedReady, this, [this](const QVariantList& tracks) {
-        m_soundcloudBusy = false;
-        addToPool(m_soundcloud, tracks);
+        filtered(tracks, "SoundCloud", [this](const QVariantList& clean) {
+            m_soundcloudBusy = false;
+            addToPool(m_soundcloud, clean, "SoundCloud");
+        });
     });
     connect(youtube, &YouTubeService::radioReady, this, [this](const QVariantList& tracks) {
-        m_youtubeBusy = false;
-        addToPool(m_youtube, tracks);
+        filtered(tracks, "YouTube", [this](const QVariantList& clean) {
+            m_youtubeBusy = false;
+            addToPool(m_youtube, clean, "YouTube");
+        });
     });
 }
 
@@ -157,10 +162,18 @@ QString WaveMixer::nextSeed() {
     return {};
 }
 
-void WaveMixer::addToPool(QList<QVariantMap>& pool, const QVariantList& tracks) {
+void WaveMixer::filtered(const QVariantList& tracks, const QString& origin,
+                         std::function<void(const QVariantList&)> done) {
+    if (filter) filter->process(tracks, origin, done);
+    else done(tracks);
+}
+
+// via: какая площадка посоветовала, по нему ранжирование держит долю площадок
+void WaveMixer::addToPool(QList<QVariantMap>& pool, const QVariantList& tracks, const QString& origin) {
     for (const QVariant& t : tracks) {
         if (pool.size() >= kPoolLimit) break;
         QVariantMap track = t.toMap();
+        if (!track.contains("via")) track["via"] = origin;
         if (isFresh(track)) pool.append(track);
     }
 }

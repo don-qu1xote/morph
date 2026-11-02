@@ -22,6 +22,8 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     soundcloud = new SoundCloudService(net, this);
     youtube = new YouTubeService(this);
     mixer = new WaveMixer(soundcloud, youtube, this);
+    m_filter = new CandidateFilter(yandex, PathProvider::getDataPath() + "/candidates.json", this);
+    mixer->setFilter(m_filter);
 
     m_services = {{"Yandex", yandex}, {"SoundCloud", soundcloud}, {"YouTube", youtube}};
     for (const auto& [name, s] : m_services) attach(s);
@@ -68,6 +70,7 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_recommender = new Recommender(PathProvider::getDataPath(), this);
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
     m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
+    m_mixes->setFilter(m_filter);
     connect(m_mixes, &MorphMixes::ready, this,
             [this](const QString& name, const QString& coverUrl, const QVariantList& tracks) {
                 if (!coverUrl.isEmpty()) this->cache->cacheCover(coverUrl);
@@ -552,6 +555,8 @@ void ServiceManager::setSoundCloudClientId(const QString& clientId) {
 
 void ServiceManager::setMixedWave(bool enabled) {
     mixer->setEnabled(enabled);
+    // смешанная волна: треть мест за советами SoundCloud и YouTube, как у миксера
+    m_recommender->setExternalShare(enabled ? 1.0 / 3 : 0);
 }
 
 void ServiceManager::setAudioQuality(const QString& quality) {

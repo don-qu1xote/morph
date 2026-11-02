@@ -7,8 +7,10 @@
 #include <QSet>
 #include <QStringList>
 #include <QVariantList>
+#include <functional>
 #include <optional>
 
+class CandidateFilter;
 class SoundCloudService;
 class YouTubeService;
 
@@ -23,6 +25,8 @@ public:
     WaveMixer(SoundCloudService* soundcloud, YouTubeService* youtube, QObject* parent = nullptr);
 
     void setEnabled(bool enabled);
+    // похожее с SoundCloud и YouTube перед пулом проходит отбор, см. CandidateFilter
+    void setFilter(CandidateFilter* filter) { this->filter = filter; }
     // лайки, которые Яндекс больше не отдаёт: играют через фолбэк и служат сидами
     void setLostTracks(const QVariantList& tracks);
     // дослушанный или лайкнутый трек: по нему похожее ищется в первую очередь
@@ -44,12 +48,14 @@ private:
     std::optional<QVariantMap> takeFrom(QList<QVariantMap>& pool);
     void refill();
     QString nextSeed();
-    void addToPool(QList<QVariantMap>& pool, const QVariantList& tracks);
+    void addToPool(QList<QVariantMap>& pool, const QVariantList& tracks, const QString& origin);
+    void filtered(const QVariantList& tracks, const QString& origin, std::function<void(const QVariantList&)> done);
     bool isFresh(const QVariantMap& track) const;
     void remember(const QVariantMap& track);
 
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
+    CandidateFilter* filter = nullptr;
     bool m_enabled = true;
     bool m_soundcloudBusy = false;
     bool m_youtubeBusy = false;

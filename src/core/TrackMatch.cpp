@@ -154,6 +154,45 @@ QString TrackMatch::query(const QVariantMap& track) {
     return artist.isEmpty() ? title : artist + " - " + title;
 }
 
+QVariantMap TrackMatch::cleaned(const QVariantMap& track) {
+    // пометки клипа и загрузки: к самой песне не относятся
+    static const QRegularExpression promo("official|video|audio|lyric|visualizer|\\bhd\\b|\\bhq\\b|\\b4k\\b|"
+                                          "клип|премьера|текст|\\bmv\\b",
+                                          QRegularExpression::CaseInsensitiveOption);
+    QVariantMap out = track;
+    QString artist = track["artist"].toString();
+    QString title = track["title"].toString();
+    int dash = title.indexOf(" - ");
+    if (dash > 0) {
+        artist = title.left(dash);
+        title = title.mid(dash + 3);
+    }
+
+    QString kept;
+    int from = 0;
+    QRegularExpressionMatchIterator it = brackets().globalMatch(title);
+    while (it.hasNext()) {
+        QRegularExpressionMatch m = it.next();
+        kept += title.mid(from, m.capturedStart() - from);
+        if (!promo.match(m.captured(1)).hasMatch()) kept += m.captured(0);
+        from = m.capturedEnd();
+    }
+    kept += title.mid(from);
+
+    out["artist"] = artist.trimmed();
+    out["title"] = kept.simplified();
+    return out;
+}
+
+bool TrackMatch::isOtherVersion(const QVariantMap& track) {
+    Parts p = parts(track);
+    QStringList all = words(p.title + " " + p.extras);
+    for (const QString& w : otherVersions()) {
+        if (all.contains(w)) return true;
+    }
+    return false;
+}
+
 QString TrackMatch::searchQuery(const QVariantMap& track) {
     Parts p = parts(track);
     QString artist = firstArtist(p.artist).trimmed();

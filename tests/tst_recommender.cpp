@@ -211,6 +211,44 @@ private slots:
         QCOMPARE(fresh, 5);
     }
 
+    // смешанная волна: советы SoundCloud и YouTube держат треть мест, даже
+    // если модель пока ставит их ниже яндексовских
+    void externalSourcesKeepTheirShare() {
+        Recommender rec(dir.path());
+        rec.setClock([] { return kStart; });
+        QVariantList liked, candidates;
+        for (int i = 0; i < 10; ++i) {
+            QVariantMap own = track("y" + QString::number(i), "Liked " + QString::number(i));
+            liked.append(own);
+            candidates.append(own);
+            QVariantMap outside = track("s" + QString::number(i), "Liked " + QString::number(i), "Other");
+            outside["service"] = "SoundCloud";
+            outside["via"] = "SoundCloud";
+            candidates.append(outside);
+        }
+        rec.setLikes(liked);
+        rec.setNewShare(0);
+
+        QList<int> externalAt;
+        QVariantList ranked = rec.rank(candidates, 9, false);
+        for (int i = 0; i < ranked.size(); ++i) {
+            if (Recommender::isExternal(ranked[i].toMap())) externalAt.append(i);
+        }
+        QVERIFY(externalAt.isEmpty() || externalAt.size() < 3);
+
+        rec.setExternalShare(1.0 / 3);
+        externalAt.clear();
+        ranked = rec.rank(candidates, 9, false);
+        for (int i = 0; i < ranked.size(); ++i) {
+            if (Recommender::isExternal(ranked[i].toMap())) externalAt.append(i);
+        }
+        QCOMPARE(externalAt, QList<int>({2, 5, 8}));
+        // кто посоветовал, модель видит отдельным признаком
+        bool hasVia = false;
+        for (const auto& f : rec.features(ranked[2].toMap())) hasVia = hasVia || f.first == "via:SoundCloud";
+        QVERIFY(hasVia);
+    }
+
     void sameArtistIsSpreadOut() {
         Recommender rec(dir.path());
         rec.setClock([] { return kStart; });

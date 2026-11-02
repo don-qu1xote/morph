@@ -15,6 +15,7 @@ class YandexService : public BaseService {
 public:
     explicit YandexService(NetworkManager* network, QObject* parent = nullptr);
     void setToken(const QString& token);
+    bool hasToken() const { return !m_token.isEmpty(); }
     void setAudioQuality(const QString& quality);
     void search(const QString& query) override;
     void resolveStreamUrl(const QString& trackId) override;

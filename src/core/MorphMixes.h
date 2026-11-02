@@ -7,6 +7,7 @@
 #include <QVariantList>
 #include <functional>
 
+class CandidateFilter;
 class Library;
 class Recommender;
 class SoundCloudService;
@@ -30,6 +31,7 @@ public:
     QVariantList cards();
     // id вида morph:onrepeat; ответ в ready или failed
     void build(const QString& id);
+    void setFilter(CandidateFilter* filter) { this->filter = filter; }
 
     // Волна по списку треков, например по плейлисту: похожее на три случайных
     // трека из него и пара его собственных. Партии в seededBatch, следующую
@@ -72,6 +74,7 @@ private:
     Library* library;
     YandexService* yandex;
     SoundCloudService* soundcloud;
+    CandidateFilter* filter = nullptr;
     QString m_discoverPath;
 
     QVariantList m_seeds;

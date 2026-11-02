@@ -12,6 +12,7 @@
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
 #include "../services/LyricsService.h"
+#include "CandidateFilter.h"
 #include "FallbackFinder.h"
 #include "Library.h"
 #include "MorphMixes.h"
@@ -123,6 +124,7 @@ private:
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
     WaveMixer* mixer;
+    CandidateFilter* m_filter;
     FallbackFinder* finder;
     LyricsService* lyrics;
     // имена такие же, как поле service у трека: "Yandex", "SoundCloud", "YouTube"

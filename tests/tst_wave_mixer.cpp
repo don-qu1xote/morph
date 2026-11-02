@@ -5,8 +5,10 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include "core/CandidateFilter.h"
 #include "core/WaveMixer.h"
 #include "services/SoundCloudService.h"
+#include "services/YandexService.h"
 #include "services/YouTubeService.h"
 #include "support/FakeHttpServer.h"
 #include "support/FakeTools.h"
@@ -150,6 +152,43 @@ private slots:
         QVERIFY(related.size() > 1 || related.wait());
         QVERIFY(radio.size() > 1 || radio.wait());
         QVERIFY(searches().contains("Artist 6 - Title 6"));
+    }
+
+    // через отбор: ремикс и бит с SoundCloud до волны не доходят, у остального
+    // записано, кто посоветовал
+    void filterKeepsJunkOutOfTheWave() {
+        serveSoundCloud({soundcloudTrack("sc1", "Related One (Remix)"),
+                         soundcloudTrack("sc2", "Beatmaker - Grey Type Beat"),
+                         soundcloudTrack("sc3", "Uploader - Related Three (Official Audio)")});
+        NetworkManager net;
+        SoundCloudService soundcloud(&net);
+        soundcloud.setToken("client-id");
+        YouTubeService youtube;
+        YandexService yandex(&net);
+        CandidateFilter filter(&yandex, dir.filePath("candidates.json"));
+        WaveMixer mixer(&soundcloud, &youtube);
+        mixer.setFilter(&filter);
+        QSignalSpy wave(&mixer, &WaveMixer::waveReady);
+        QSignalSpy related(&soundcloud, &SoundCloudService::relatedReady);
+        QSignalSpy radio(&youtube, &YouTubeService::radioReady);
+
+        mixer.addBatch("Yandex", yandexBatch(1, 5));
+        QVERIFY(related.wait());
+        QVERIFY(!radio.isEmpty() || radio.wait());
+        mixer.addBatch("Yandex", yandexBatch(6, 10));
+
+        QStringList mixed = ids(wave[1][1]);
+        QVERIFY(mixed.contains("sc3"));
+        QVERIFY(!mixed.contains("sc1"));
+        QVERIFY(!mixed.contains("sc2"));
+        for (const QVariant& t : wave[1][1].toList()) {
+            QVariantMap track = t.toMap();
+            if (track["id"] == "sc3") {
+                QCOMPARE(track["via"].toString(), QString("SoundCloud"));
+                QCOMPARE(track["title"].toString(), QString("Related Three"));
+            }
+            if (track["id"] == "yt1") QCOMPARE(track["via"].toString(), QString("YouTube"));
+        }
     }
 
     void finishedTrackBecomesTheNextSeed() {

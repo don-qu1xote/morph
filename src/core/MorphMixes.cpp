@@ -1,4 +1,5 @@
 #include "MorphMixes.h"
+#include "CandidateFilter.h"
 #include "Library.h"
 #include "Recommender.h"
 #include "TrackMatch.h"
@@ -491,7 +492,12 @@ void MorphMixes::similarTo(const QVariantList& seeds, int soundcloudSeeds, Track
     };
     for (const QString& id : std::as_const(yandexIds)) yandex->similarTracks(id, collect);
     for (int i = 0; i < fromSoundCloud; ++i)
-        soundcloud->relatedTo(TrackMatch::searchQuery(seeds[i].toMap()), 10, collect);
+        soundcloud->relatedTo(TrackMatch::searchQuery(seeds[i].toMap()), 10,
+                              [this, collect](const QVariantList& tracks) {
+                                  // похожее с SoundCloud сырое, через тот же отбор, что и в волне
+                                  if (filter) filter->process(tracks, "SoundCloud", collect);
+                                  else collect(tracks);
+                              });
 }
 
 QVariantMap MorphMixes::card(const QString& id, const QString& name, const QString& subtitle,

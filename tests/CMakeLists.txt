@@ -24,3 +24,4 @@ morph_add_test(tst_lyrics_service tst_lyrics_service.cpp support/FakeHttpServer.
 morph_add_test(tst_library tst_library.cpp)
 morph_add_test(tst_recommender tst_recommender.cpp)
 morph_add_test(tst_morph_mixes tst_morph_mixes.cpp support/FakeHttpServer.h)
+morph_add_test(tst_candidate_filter tst_candidate_filter.cpp support/FakeHttpServer.h)

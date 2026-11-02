@@ -27,15 +27,22 @@ public:
     void disliked(const QVariantMap& track);
 
     // Лучшие count из candidates по модели «дослушаешь ли». Доля треков
-    // незнакомых артистов держится около newShare, один артист не встаёт два
-    // раза подряд и не чаще двух раз на десять треков. explore: с разведкой,
-    // newShare: своя доля нового вместо общей настройки
+    // незнакомых артистов держится около newShare, советов SoundCloud и YouTube
+    // не меньше externalShare, один артист не встаёт два раза подряд и не
+    // чаще двух раз на десять треков. explore: с разведкой, newShare: своя
+    // доля нового вместо общей настройки
     QVariantList rank(const QVariantList& candidates, int count, bool explore = true, double newShare = -1);
     // 0.15 больше привычного, 0.3 баланс, 0.5 больше нового
     void setNewShare(double share) { m_newShare = share; }
     double newShare() const { return m_newShare; }
     // незнакомый артист: ничего у него не дослушал и не лайкал
     bool isNew(const QVariantMap& track) const;
+    // Сколько мест в волне держать за советами SoundCloud и YouTube. Их
+    // кандидаты сырее яндексовских, и без нижней границы модель вытесняла бы
+    // их целиком, так и не узнав, нравятся ли они тебе. 0, если смешанная выключена
+    void setExternalShare(double share) { m_externalShare = share; }
+    // посоветован SoundCloud или YouTube, где бы ни играл
+    static bool isExternal(const QVariantMap& track);
     Ranker::Features features(const QVariantMap& track) const;
 
     // Партия волны ложится в запас, наружу уходят лучшие. Четверть остаётся и
@@ -64,6 +71,7 @@ private:
     QString m_rankerPath;
     int m_unsaved = 0;
     double m_newShare = 0.3;
+    double m_externalShare = 0;
     // по TrackMatch::songKey, копится вместе с историей
     QHash<QString, ListeningHistory::SongStats> m_songs;
     QSet<QString> m_liked;
