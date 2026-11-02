@@ -406,6 +406,17 @@ ApplicationWindow {
         playlistToolbar.reset()
     }
 
+    // новая обложка с доски Pinterest для открытого плейлиста
+    function newPlaylistCover() {
+        var url = MorphServices.newCover("playlist:" + currentPlaylist)
+        if (url === "") {
+            showToast("Pinterest board is not loaded: check the token and board in Settings")
+            return
+        }
+        MorphSettings.renamePlaylist(currentPlaylist, currentPlaylist, url)
+        showToast("New cover")
+    }
+
     function startPlaylistWave() {
         var tracks = playlistSource.length > 0 ? playlistSource : fullPlaylistTracks
         if (tracks.length === 0) return
@@ -1536,6 +1547,8 @@ ApplicationWindow {
                                                 fontFamily: mainFont.name
                                                 onArrangeChanged: arrangePlaylist()
                                                 onWaveWanted: startPlaylistWave()
+                                                canChangeCover: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && MorphSettings.getPlaylists()[currentPlaylist] !== undefined)
+                                                onCoverWanted: newPlaylistCover()
                                             }
                                             Rectangle {
                                                 Layout.fillWidth: true; Layout.preferredHeight: libraryTracksList.contentHeight + 20; color: "#f0f0f0"
@@ -1624,6 +1637,48 @@ ApplicationWindow {
                                                     MorphSettings.setSoundCloudToken(text)
                                                     MorphServices.setSoundCloudClientId(text)
                                                     showToast("SoundCloud token saved")
+                                                }
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 10
+                                            RowLayout {
+                                                spacing: 8
+                                                Image {
+                                                    source: "qrc:/assets/pinterest.svg"; Layout.preferredWidth: 16; Layout.preferredHeight: 16
+                                                    sourceSize.width: 32; sourceSize.height: 32
+                                                }
+                                                Text { text: "Pinterest Token"; color: "#555555"; font.family: mainFont.name; font.pixelSize: 11 }
+                                            }
+                                            TextField {
+                placeholderTextColor: "#999"
+                                                id: pinterestTokenField; text: MorphSettings.getPinterestToken(); Layout.fillWidth: true
+                                                color: "#111111"; font.family: mainFont.name; font.pixelSize: 13; padding: 12; echoMode: TextInput.Password
+                                                background: Rectangle { color: "#f0f0f0"; radius: 6; border.color: "#cccccc" }
+                                                onEditingFinished: {
+                                                    MorphSettings.setPinterestToken(text)
+                                                    showToast("Pinterest token saved")
+                                                }
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 10
+                                            RowLayout {
+                                                spacing: 8
+                                                Image {
+                                                    source: "qrc:/assets/pinterest.svg"; Layout.preferredWidth: 16; Layout.preferredHeight: 16
+                                                    sourceSize.width: 32; sourceSize.height: 32
+                                                }
+                                                Text { text: "Pinterest Board (link or name)"; color: "#555555"; font.family: mainFont.name; font.pixelSize: 11 }
+                                            }
+                                            TextField {
+                placeholderTextColor: "#999"
+                                                id: pinterestBoardField; text: MorphSettings.getPinterestBoard(); Layout.fillWidth: true
+                                                color: "#111111"; font.family: mainFont.name; font.pixelSize: 13; padding: 12; echoMode: TextInput.Normal
+                                                background: Rectangle { color: "#f0f0f0"; radius: 6; border.color: "#cccccc" }
+                                                onEditingFinished: {
+                                                    MorphSettings.setPinterestBoard(text)
+                                                    showToast("Pinterest board saved")
                                                 }
                                             }
                                         }

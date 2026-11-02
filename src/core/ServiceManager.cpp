@@ -74,6 +74,13 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
     m_mixes->setFilter(m_filter);
     m_playlistSync = new PlaylistSync(yandex, m_library, PathProvider::getDataPath() + "/yandex_playlists.json", this);
+    m_covers = new PinterestCovers(net, PathProvider::getDataPath() + "/pinterest.json", this);
+    connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
+    // доска пришла позже карточек: раздаём им обложки заново
+    connect(m_covers, &PinterestCovers::loaded, this, [this]() {
+        emitMorphCards();
+        emit coversReady();
+    });
     connect(m_mixes, &MorphMixes::ready, this,
             [this](const QString& name, const QString& coverUrl, const QVariantList& tracks) {
                 if (!coverUrl.isEmpty()) this->cache->cacheCover(coverUrl);
@@ -324,11 +331,19 @@ void ServiceManager::openAlbum(const QVariantMap& album) {
 
 void ServiceManager::getDailyMixes() {
     for (const auto& [name, s] : m_services) s->getDailyMixes();
-    // свои миксы считаются на месте, треки по клику через importPlaylist
+    emitMorphCards();
+}
+
+// Свои миксы считаются на месте, треки по клику через importPlaylist. С
+// доской Pinterest у каждой карточки каждый раз новая обложка
+void ServiceManager::emitMorphCards() {
     QVariantList cards = m_mixes->cards();
-    for (const QVariant& c : std::as_const(cards)) {
-        QString coverUrl = c.toMap()["coverUrl"].toString();
-        if (!coverUrl.isEmpty()) cache->cacheCover(coverUrl);
+    for (QVariant& c : cards) {
+        QVariantMap card = c.toMap();
+        QString pinned = m_covers->next(card["id"].toString());
+        if (!pinned.isEmpty()) card["coverUrl"] = pinned;
+        if (!card["coverUrl"].toString().isEmpty()) cache->cacheCover(card["coverUrl"].toString());
+        c = card;
     }
     emit dailyMixesReady("morph", cards);
 }

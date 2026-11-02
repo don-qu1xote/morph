@@ -36,6 +36,7 @@
 - **Advanced Playlist Management**:
   - Create, rename, and delete custom playlists.
   - Set custom cover images using external URLs (Imgur, Pinterest, etc.).
+  - **Pinterest covers**: point morph at one of your Pinterest boards (token and board in Settings) and every playlist without a custom cover, every morph mix and every **NEW COVER** click gets a picture from it that no other playlist has had yet.
   - Easily add tracks from search, charts, or history directly into your playlists.
   - Search inside a playlist and sort it by title, artist, length or how often you play each track.
   - **Playlist Wave**: an endless wave of tracks similar to the playlist, mixed with a few of its own, ordered by Personal Ranking.

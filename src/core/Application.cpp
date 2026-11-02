@@ -66,6 +66,7 @@ Application::Application(QObject *parent) : QObject(parent) {
         services->setSyncToYandex(settings->getSyncToYandex());
         services->setSyncToSoundCloud(settings->getSyncToSoundCloud());
         services->setSyncPlaylists(settings->getSyncPlaylistsToYandex());
+        services->setPinterest(settings->getPinterestToken(), settings->getPinterestBoard());
         services->setSmartWaves(settings->getSmartWavesEnabled());
         // morph:new и подобные свои, в сессию Яндекса они не уходят
         QStringList seeds;
@@ -98,6 +99,17 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(settings, &SettingsManager::playlistsChanged, playlistsTimer, qOverload<>(&QTimer::start));
     connect(settings, &SettingsManager::playlistRenamed, services, &ServiceManager::playlistRenamed);
     playlistsTimer->start();
+    // Доска Pinterest загрузилась: плейлистам без обложки и с обложкой с доски
+    // каждый запуск новая картинка. Обложку, поставленную руками, не трогаем
+    connect(services, &ServiceManager::coversReady, settings, [this]() {
+        const QVariantMap playlists = settings->getPlaylists();
+        for (auto it = playlists.cbegin(); it != playlists.cend(); ++it) {
+            QString cover = it.value().toMap()["coverUrl"].toString();
+            if (!cover.isEmpty() && !services->isPinterestCover(cover)) continue;
+            QString fresh = services->newCover("playlist:" + it.key());
+            if (!fresh.isEmpty()) settings->renamePlaylist(it.key(), it.key(), fresh);
+        }
+    });
     // Лайки YouTube на старте и когда в настройках выбрали другой браузер.
     // Браузеры там переключаются кликами по кругу, поэтому ждём, пока выбор устоится
     QTimer* youtubeLikesTimer = new QTimer(this);

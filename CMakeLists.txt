@@ -58,6 +58,7 @@ add_library(morph_core STATIC
     src/services/SoundCloudService.h src/services/SoundCloudService.cpp
     src/services/YouTubeService.h src/services/YouTubeService.cpp
     src/services/LyricsService.h src/services/LyricsService.cpp
+    src/services/PinterestCovers.h src/services/PinterestCovers.cpp
     src/audio/AudioEngine.h src/audio/AudioEngine.cpp
     src/core/ServiceManager.h src/core/ServiceManager.cpp
     src/core/ListenTracker.h src/core/ListenTracker.cpp

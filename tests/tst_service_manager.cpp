@@ -475,6 +475,32 @@ private slots:
         QVERIFY(!notices.isEmpty());
     }
 
+    // доска Pinterest загрузилась: плейлистам раздаются новые обложки
+    void pinterestBoardGivesCovers() {
+        qputenv("MORPH_PINTEREST_API", yandexApi.url().toUtf8());
+        yandexApi.on("GET", "/boards/1001/pins", [](const HttpRequest&) {
+            QJsonObject image{{"1200x", QJsonObject{{"url", "https://i.pinimg.example/1.jpg"}}}};
+            return jsonBody({{"items", QJsonArray{QJsonObject{{"media", QJsonObject{{"images", image}}}}}}});
+        });
+        QFile::remove(PathProvider::getDataPath() + "/pinterest.json");
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QSignalSpy ready(&services, &ServiceManager::coversReady);
+        QSignalSpy cards(&services, &ServiceManager::dailyMixesReady);
+        QVERIFY(services.newCover("playlist:Road").isEmpty());
+
+        services.setPinterest("tok", "1001");
+        QVERIFY(ready.wait());
+        QVERIFY(services.hasCovers());
+        QCOMPARE(cards.last()[0].toString(), QString("morph"));
+        QString cover = services.newCover("playlist:Road");
+        QCOMPARE(cover, QString("https://i.pinimg.example/1.jpg"));
+        QVERIFY(services.isPinterestCover(cover));
+        qunsetenv("MORPH_PINTEREST_API");
+    }
+
     // суточный токен истёк: в SoundCloud ничего не пишется
     void expiredTokenWritesNothing() {
         QFile::remove(PathProvider::getDataPath() + "/library.json");

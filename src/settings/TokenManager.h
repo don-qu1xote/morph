@@ -14,6 +14,8 @@ public:
     QString getYandexToken();
     void setSoundCloudToken(const QString& token);
     QString getSoundCloudToken();
+    void setPinterestToken(const QString& token);
+    QString getPinterestToken();
 
 signals:
     void settingsChanged();

@@ -12,6 +12,7 @@
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
 #include "../services/LyricsService.h"
+#include "../services/PinterestCovers.h"
 #include "CandidateFilter.h"
 #include "FallbackFinder.h"
 #include "Library.h"
@@ -70,6 +71,12 @@ public slots:
     // понравившееся в YouTube Music в MAIN, через cookies браузера; ответ в likesImported
     void importYouTubeLikes(const QString& browser);
     void setSyncPlaylists(bool enabled) { m_playlistSync->setEnabled(enabled); }
+    // доска Pinterest для обложек: ссылка, имя или id
+    void setPinterest(const QString& token, const QString& board) { m_covers->setAccount(token, board); }
+    // новая обложка с доски для плейлиста key; пусто, если доска не загружена
+    QString newCover(const QString& key) { return m_covers->next(key); }
+    bool hasCovers() const { return m_covers->ready(); }
+    bool isPinterestCover(const QString& url) const { return m_covers->isOurs(url); }
     // плейлисты morph, как их отдаёт MorphSettings.getPlaylists(): сверка с Яндексом
     void syncPlaylists(const QVariantMap& playlists) { m_playlistSync->sync(playlists); }
     void playlistRenamed(const QString& oldName, const QString& newName) { m_playlistSync->renamed(oldName, newName); }
@@ -95,6 +102,8 @@ signals:
     void likesImported(const QString& serviceName, const QVariantList& tracks);
     // сообщение для интерфейса, не ошибка
     void notice(const QString& message);
+    // доска Pinterest загрузилась: плейлистам можно раздавать новые обложки
+    void coversReady();
     // трек играет с замены: service, id, artist, title, webUrl, index и total
     void fallbackChosen(const QString& trackId, const QVariantMap& source);
     void stationsReady(const QVariantList& stations);
@@ -116,6 +125,7 @@ private:
     bool syncSoundCloud();
     QVariantMap knownTrack(const QString& trackId) const;
     void deliverArtist(const QString& requested, QVariantMap info);
+    void emitMorphCards();
 
     QString m_yandexToken;
     QString m_soundcloudToken;
@@ -135,6 +145,7 @@ private:
     Recommender* m_recommender;
     MorphMixes* m_mixes;
     PlaylistSync* m_playlistSync;
+    PinterestCovers* m_covers;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id
     QHash<QString, QVariantMap> m_started;
     NetworkManager* net;

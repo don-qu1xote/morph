@@ -19,8 +19,11 @@ Item {
     property color accentColor: "#b57339"
     property color accentTextColor: "black"
     property string fontFamily: ""
+    // свой плейлист morph: ему можно поставить новую обложку с доски Pinterest
+    property bool canChangeCover: false
 
     signal waveWanted
+    signal coverWanted
     // фильтр или сортировка поменялись, список пора пересобрать
     signal arrangeChanged
 
@@ -94,6 +97,47 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.waveWanted()
+            }
+        }
+
+        Rectangle {
+            visible: root.canChangeCover
+            implicitWidth: coverRow.implicitWidth + 24
+            implicitHeight: 34
+            radius: 17
+            color: coverMouse.containsMouse ? root.fieldColor : "transparent"
+            border.color: root.borderColor
+            border.width: 1
+
+            RowLayout {
+                id: coverRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                Image {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    source: "qrc:/assets/image-refresh.svg"
+                    sourceSize: Qt.size(28, 28)
+                    layer.enabled: true
+                    layer.effect: ColorOverlay { color: root.textColor }
+                }
+
+                Text {
+                    text: "NEW COVER"
+                    color: root.textColor
+                    font.family: root.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.Black
+                }
+            }
+
+            MouseArea {
+                id: coverMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.coverWanted()
             }
         }
 

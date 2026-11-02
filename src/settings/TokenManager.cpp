@@ -21,3 +21,12 @@ void TokenManager::setSoundCloudToken(const QString& token) {
 QString TokenManager::getSoundCloudToken() {
     return CryptoUtils::decrypt((*m_data)["soundcloud_token"].toString());
 }
+
+void TokenManager::setPinterestToken(const QString& token) {
+    (*m_data)["pinterest_token"] = CryptoUtils::encrypt(token);
+    emit settingsChanged();
+}
+
+QString TokenManager::getPinterestToken() {
+    return CryptoUtils::decrypt((*m_data)["pinterest_token"].toString());
+}

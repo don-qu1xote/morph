@@ -169,6 +169,25 @@ QString SettingsManager::getSoundCloudToken() {
     return m_tokens->getSoundCloudToken();
 }
 
+void SettingsManager::setPinterestToken(const QString& token) {
+    m_tokens->setPinterestToken(token);
+    save();
+}
+
+QString SettingsManager::getPinterestToken() {
+    return m_tokens->getPinterestToken();
+}
+
+void SettingsManager::setPinterestBoard(const QString& board) {
+    m_data["pinterest_board"] = board.trimmed();
+    save();
+    emit settingsChanged();
+}
+
+QString SettingsManager::getPinterestBoard() {
+    return m_data["pinterest_board"].toString();
+}
+
 void SettingsManager::addSearchHistory(const QVariantMap& track) {
     m_history->addSearchHistory(track);
     save();

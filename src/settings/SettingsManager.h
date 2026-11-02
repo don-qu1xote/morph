@@ -48,6 +48,11 @@ public slots:
     QString getYandexToken();
     void setSoundCloudToken(const QString& token);
     QString getSoundCloudToken();
+    // обложки плейлистов с доски Pinterest: токен из кабинета разработчика и доска
+    void setPinterestToken(const QString& token);
+    QString getPinterestToken();
+    void setPinterestBoard(const QString& board);
+    QString getPinterestBoard();
 
     void addSearchHistory(const QVariantMap& track);
     QVariantList getSearchHistory();
