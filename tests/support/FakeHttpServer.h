@@ -55,7 +55,12 @@ public:
         m_handlers[QString::fromLatin1(method) + " " + path] = handler;
     }
 
+    // Сначала дочитываем то, что прошлый тест успел отправить: байты уже в
+    // сокете, но сервер прочтёт их только на следующем витке цикла событий,
+    // и без этого запрос приписался бы следующему тесту
     void reset() {
+        QDeadlineTimer settle(30);
+        while (!settle.hasExpired()) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
         requests.clear();
         m_handlers.clear();
     }
