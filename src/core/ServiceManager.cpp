@@ -73,6 +73,7 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
     m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
     m_mixes->setFilter(m_filter);
+    m_playlistSync = new PlaylistSync(yandex, m_library, PathProvider::getDataPath() + "/yandex_playlists.json", this);
     connect(m_mixes, &MorphMixes::ready, this,
             [this](const QString& name, const QString& coverUrl, const QVariantList& tracks) {
                 if (!coverUrl.isEmpty()) this->cache->cacheCover(coverUrl);

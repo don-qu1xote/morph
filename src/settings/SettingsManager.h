@@ -89,6 +89,9 @@ public slots:
     // песни MAIN лайками в аккаунт SoundCloud, чтобы его рекомендации учились на них
     void setSyncToSoundCloud(bool enabled);
     bool getSyncToSoundCloud();
+    // плейлисты morph настоящими плейлистами в Яндексе
+    void setSyncPlaylistsToYandex(bool enabled);
+    bool getSyncPlaylistsToYandex();
     // из какого браузера yt-dlp читает cookies для лайков YouTube; пусто, если выключено
     void setYouTubeLikesBrowser(const QString& browser);
     QString getYouTubeLikesBrowser();
@@ -122,6 +125,7 @@ signals:
     void likesChanged();
     void likeToggled(const QVariantMap& track, bool liked);
     void playlistsChanged();
+    void playlistRenamed(const QString& oldName, const QString& newName);
     void settingsChanged();
 
 private:

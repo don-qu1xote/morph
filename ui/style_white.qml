@@ -1927,6 +1927,45 @@ ApplicationWindow {
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
+                                                var newState = !MorphSettings.getSyncPlaylistsToYandex()
+                                                MorphSettings.setSyncPlaylistsToYandex(newState)
+                                                showToast("Playlists to Yandex " + (newState ? "enabled" : "disabled"))
+                                            }
+                                            background: Rectangle { color: "#f0f0f0"; radius: 10; border.color: "#cccccc" }
+                                            contentItem: RowLayout {
+                                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                                anchors.leftMargin: 15; anchors.rightMargin: 15; spacing: 10
+                                                Image {
+                                                    source: "qrc:/assets/playlist-music.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter
+                                                    sourceSize.width: 40; sourceSize.height: 40
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: "#111111" }
+                                                }
+                                                Text { text: "Playlists to Yandex"; color: "#111111"; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Medium; Layout.fillWidth: true; verticalAlignment: Text.AlignVCenter }
+                                                Switch {
+                                                    id: syncPlaylistsSwitch; Layout.alignment: Qt.AlignVCenter; Layout.preferredHeight: 20; padding: 0
+                                                    checked: (window.settingsVersion, MorphSettings.getSyncPlaylistsToYandex())
+                                                    onToggled: {
+                                                        MorphSettings.setSyncPlaylistsToYandex(checked)
+                                                        showToast("Playlists to Yandex " + (checked ? "enabled" : "disabled"))
+                                                    }
+                                                    indicator: Rectangle {
+                                                        implicitWidth: 36; implicitHeight: 20; radius: 10
+                                                        color: syncPlaylistsSwitch.checked ? "#b57339" : "#dddddd"
+                                                        Behavior on color { ColorAnimation { duration: 150 } }
+                                                        Rectangle {
+                                                            x: syncPlaylistsSwitch.checked ? parent.width - width - 2 : 2; y: 2
+                                                            width: 16; height: 16; radius: 8; color: "#111111"
+                                                            Behavior on x { NumberAnimation { duration: 150 } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                                        }
+
+                                        Button {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 50
+                                            onClicked: (mouse) => {
                                                 var newState = !MorphSettings.getSyncToSoundCloud()
                                                 MorphSettings.setSyncToSoundCloud(newState)
                                                 showToast("Sync to SoundCloud " + (newState ? "enabled" : "disabled"))

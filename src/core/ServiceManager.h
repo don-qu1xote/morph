@@ -16,6 +16,7 @@
 #include "FallbackFinder.h"
 #include "Library.h"
 #include "MorphMixes.h"
+#include "PlaylistSync.h"
 #include "Recommender.h"
 #include "WaveMixer.h"
 
@@ -68,6 +69,10 @@ public slots:
     void setSyncToSoundCloud(bool enabled);
     // понравившееся в YouTube Music в MAIN, через cookies браузера; ответ в likesImported
     void importYouTubeLikes(const QString& browser);
+    void setSyncPlaylists(bool enabled) { m_playlistSync->setEnabled(enabled); }
+    // плейлисты morph, как их отдаёт MorphSettings.getPlaylists(): сверка с Яндексом
+    void syncPlaylists(const QVariantMap& playlists) { m_playlistSync->sync(playlists); }
+    void playlistRenamed(const QString& oldName, const QString& newName) { m_playlistSync->renamed(oldName, newName); }
     void setSmartWaves(bool enabled) { m_smartWaves = enabled; }
     // familiar, balanced или new: сколько незнакомых артистов в волнах и миксах
     void setDiscovery(const QString& level);
@@ -129,6 +134,7 @@ private:
     Library* m_library;
     Recommender* m_recommender;
     MorphMixes* m_mixes;
+    PlaylistSync* m_playlistSync;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id
     QHash<QString, QVariantMap> m_started;
     NetworkManager* net;

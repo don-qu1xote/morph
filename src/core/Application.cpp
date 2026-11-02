@@ -65,6 +65,7 @@ Application::Application(QObject *parent) : QObject(parent) {
         services->setMixedWave(settings->getMixedWaveEnabled());
         services->setSyncToYandex(settings->getSyncToYandex());
         services->setSyncToSoundCloud(settings->getSyncToSoundCloud());
+        services->setSyncPlaylists(settings->getSyncPlaylistsToYandex());
         services->setSmartWaves(settings->getSmartWavesEnabled());
         // morph:new и подобные свои, в сессию Яндекса они не уходят
         QStringList seeds;
@@ -88,6 +89,15 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(settings, &SettingsManager::likeToggled, services, &ServiceManager::setLiked);
     connect(services, &ServiceManager::likesFetched, settings, &SettingsManager::mergeServiceLikes);
     connect(services, &ServiceManager::likesImported, settings, &SettingsManager::importServiceLikes);
+    // плейлисты в Яндекс: правят их по одному треку, поэтому сверка после паузы
+    QTimer* playlistsTimer = new QTimer(this);
+    playlistsTimer->setSingleShot(true);
+    playlistsTimer->setInterval(3000);
+    connect(playlistsTimer, &QTimer::timeout, services,
+            [this]() { services->syncPlaylists(settings->getPlaylists()); });
+    connect(settings, &SettingsManager::playlistsChanged, playlistsTimer, qOverload<>(&QTimer::start));
+    connect(settings, &SettingsManager::playlistRenamed, services, &ServiceManager::playlistRenamed);
+    playlistsTimer->start();
     // Лайки YouTube на старте и когда в настройках выбрали другой браузер.
     // Браузеры там переключаются кликами по кругу, поэтому ждём, пока выбор устоится
     QTimer* youtubeLikesTimer = new QTimer(this);

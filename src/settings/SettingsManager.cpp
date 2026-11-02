@@ -129,6 +129,7 @@ void SettingsManager::createPlaylistWithTracks(const QString& name, const QStrin
 void SettingsManager::renamePlaylist(const QString& oldName, const QString& newName, const QString& coverUrl) {
     m_playlists->renamePlaylist(oldName, newName, coverUrl);
     save();
+    if (oldName != newName) emit playlistRenamed(oldName, newName);
 }
 
 void SettingsManager::deletePlaylist(const QString& name) {
@@ -321,6 +322,16 @@ void SettingsManager::setYouTubeLikesBrowser(const QString& browser) {
 
 QString SettingsManager::getYouTubeLikesBrowser() {
     return m_data["youtube_likes_browser"].toString();
+}
+
+void SettingsManager::setSyncPlaylistsToYandex(bool enabled) {
+    m_data["sync_playlists_to_yandex"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getSyncPlaylistsToYandex() {
+    return m_data["sync_playlists_to_yandex"].toBool(false);
 }
 
 void SettingsManager::setSyncToSoundCloud(bool enabled) {

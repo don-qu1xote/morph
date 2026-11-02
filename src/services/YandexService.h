@@ -5,6 +5,7 @@
 #include "../network/NetworkManager.h"
 #include <QHash>
 #include <QJsonObject>
+#include <QUrlQuery>
 #include <QSet>
 #include <QStringList>
 #include <functional>
@@ -35,6 +36,20 @@ public:
     // последние альбомы артиста, новые первыми
     void artistAlbums(const QString& artistId, std::function<void(const QVariantList&)> found);
     void albumTracks(const QString& albumId, std::function<void(const QVariantList&)> found);
+    // Плейлисты в аккаунте. kind это номер плейлиста у пользователя, треки
+    // в виде "id:albumId", как их ждёт /change. Ответ приходит всегда
+    void createPlaylist(const QString& title, std::function<void(const QString& kind)> done);
+    void
+    playlistState(const QString& kind,
+                  std::function<void(bool ok, int revision, const QString& title, const QStringList& tracks)> done);
+    // заменить треки целиком: удалить старые и вставить новые одним изменением
+    void replacePlaylistTracks(const QString& kind, int revision, int oldCount, const QStringList& tracks,
+                               std::function<void(bool ok)> done);
+    void renamePlaylist(const QString& kind, const QString& title, std::function<void(bool ok)> done);
+    void deletePlaylist(const QString& kind, std::function<void(bool ok)> done);
+    // "id:albumId" для каждого id; у трека без альбома (такое бывает у старых) пропуск
+    void withAlbumIds(const QStringList& ids, std::function<void(const QStringList& fullIds)> done);
+
     // id первого найденного артиста или пусто
     void searchArtist(const QString& name, std::function<void(const QString&)> found);
     // yandexId, name, imageUrl, genres, listeners, popular, albums, similar
@@ -83,6 +98,9 @@ private:
     void findFirst(const QString& type, const QString& text, std::function<void(const QString&)> found);
     // GET по адресу, треки из result[field]
     void getTracks(const QUrl& url, const QString& field, std::function<void(const QVariantList&)> found);
+    // POST формой в /users/{uid}/playlists/...; result из ответа или пусто при ошибке
+    void postPlaylistForm(const QString& path, const QUrlQuery& form,
+                          std::function<void(bool, const QJsonValue&)> done);
     void fetchDashboard(QVariantList stations);
     void handleWaveBatch(const QJsonObject& result);
     void getWaveFromStation();

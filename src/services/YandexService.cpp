@@ -506,6 +506,128 @@ void YandexService::artistInfo(const QString& artistId, std::function<void(const
         false);
 }
 
+void YandexService::postPlaylistForm(const QString& path, const QUrlQuery& form,
+                                     std::function<void(bool, const QJsonValue&)> done) {
+    if (m_token.isEmpty()) {
+        done(false, {});
+        return;
+    }
+    withUid([this, path, form, done]() {
+        QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+        net->post(
+            QUrl(QString("%1/users/%2/playlists/%3").arg(m_api, m_uid, path)),
+            form.toString(QUrl::FullyEncoded).toUtf8(), headers,
+            [done](QNetworkReply* reply) {
+                QJsonValue result = QJsonDocument::fromJson(reply->readAll()).object()["result"];
+                done(reply->error() == QNetworkReply::NoError, result);
+            },
+            false);
+    });
+}
+
+void YandexService::createPlaylist(const QString& title, std::function<void(const QString&)> done) {
+    QUrlQuery form;
+    form.addQueryItem("title", title);
+    // свои плейлисты morph в Яндексе никому не показываем
+    form.addQueryItem("visibility", "private");
+    postPlaylistForm("create", form, [done](bool ok, const QJsonValue& result) {
+        done(ok ? result.toObject()["kind"].toVariant().toString() : QString());
+    });
+}
+
+void YandexService::playlistState(const QString& kind,
+                                  std::function<void(bool, int, const QString&, const QStringList&)> done) {
+    if (m_token.isEmpty()) {
+        done(false, 0, {}, {});
+        return;
+    }
+    withUid([this, kind, done]() {
+        net->get(
+            QUrl(QString("%1/users/%2/playlists/%3").arg(m_api, m_uid, kind)), yandexHeaders(m_token),
+            [done](QNetworkReply* reply) {
+                QJsonObject result = QJsonDocument::fromJson(reply->readAll()).object()["result"].toObject();
+                if (reply->error() != QNetworkReply::NoError || result.isEmpty()) {
+                    done(false, 0, {}, {});
+                    return;
+                }
+                QStringList tracks;
+                for (const auto& v : result["tracks"].toArray()) {
+                    QJsonObject entry = v.toObject();
+                    QJsonObject track = entry["track"].toObject();
+                    QString id = entry["id"].toVariant().toString();
+                    if (id.isEmpty()) id = track["id"].toVariant().toString();
+                    QString albumId = entry["albumId"].toVariant().toString();
+                    if (albumId.isEmpty())
+                        albumId = track["albums"].toArray().first().toObject()["id"].toVariant().toString();
+                    tracks.append(id + ":" + albumId);
+                }
+                done(true, result["revision"].toInt(), result["title"].toString(), tracks);
+            },
+            false);
+    });
+}
+
+void YandexService::replacePlaylistTracks(const QString& kind, int revision, int oldCount, const QStringList& tracks,
+                                          std::function<void(bool)> done) {
+    QJsonArray inserted;
+    for (const QString& full : tracks) {
+        inserted.append(QJsonObject{{"id", full.section(':', 0, 0)}, {"albumId", full.section(':', 1, 1)}});
+    }
+    QJsonArray diff;
+    if (oldCount > 0) diff.append(QJsonObject{{"op", "delete"}, {"from", 0}, {"to", oldCount}});
+    if (!inserted.isEmpty()) diff.append(QJsonObject{{"op", "insert"}, {"at", 0}, {"tracks", inserted}});
+
+    QUrlQuery form;
+    form.addQueryItem("kind", kind);
+    form.addQueryItem("revision", QString::number(revision));
+    form.addQueryItem("diff", QString::fromUtf8(QJsonDocument(diff).toJson(QJsonDocument::Compact)));
+    postPlaylistForm(kind + "/change", form, [done](bool ok, const QJsonValue&) { done(ok); });
+}
+
+void YandexService::renamePlaylist(const QString& kind, const QString& title, std::function<void(bool)> done) {
+    QUrlQuery form;
+    form.addQueryItem("value", title);
+    postPlaylistForm(kind + "/name", form, [done](bool ok, const QJsonValue&) { done(ok); });
+}
+
+void YandexService::deletePlaylist(const QString& kind, std::function<void(bool)> done) {
+    postPlaylistForm(kind + "/delete", {}, [done](bool ok, const QJsonValue&) { done(ok); });
+}
+
+void YandexService::withAlbumIds(const QStringList& ids, std::function<void(const QStringList&)> done) {
+    auto collect = [this, ids, done]() {
+        QStringList full;
+        for (const QString& id : ids) {
+            QString albumId = m_albumIds.value(id);
+            if (!albumId.isEmpty() && albumId != "0") full.append(id + ":" + albumId);
+        }
+        done(full);
+    };
+    QStringList missing;
+    for (const QString& id : ids) {
+        if (!m_albumIds.contains(id)) missing.append(id);
+    }
+    if (missing.isEmpty() || m_token.isEmpty()) {
+        collect();
+        return;
+    }
+
+    // альбом нужен для вставки в плейлист, а у треков из настроек его может не быть
+    QUrlQuery body;
+    body.addQueryItem("track-ids", missing.join(","));
+    QMap<QString, QByteArray> headers = yandexHeaders(m_token);
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+    net->post(
+        QUrl(m_api + "/tracks"), body.toString(QUrl::FullyEncoded).toUtf8(), headers,
+        [this, collect](QNetworkReply* reply) {
+            if (reply->error() == QNetworkReply::NoError)
+                parseYandexTracks(QJsonDocument::fromJson(reply->readAll()).object()["result"].toArray());
+            collect();
+        },
+        false);
+}
+
 // альбом для карточек: id, название, год, дата выхода, обложка, сколько треков
 QVariantMap YandexService::parseAlbum(const QJsonObject& album) {
     QString cover = album["coverUri"].toString();
