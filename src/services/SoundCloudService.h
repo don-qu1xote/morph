@@ -35,6 +35,10 @@ public:
     // то же с ответом в done: у плейлистов свои запросы, миксер их не должен видеть
     void relatedTo(const QString& query, int count, std::function<void(const QVariantList&)> done);
     bool hasToken() const { return !m_token.isEmpty(); }
+    // OAuth есть и не истёк: можно писать в аккаунт
+    bool canWrite() const;
+    // лайк в аккаунте SoundCloud; done(true), если сервер принял
+    void setLiked(const QString& trackId, bool liked, std::function<void(bool)> done);
 
 signals:
     void candidatesReady(const QString& trackId, const QVariantList& tracks);
@@ -47,6 +51,8 @@ private:
     static QJsonArray playableOnly(const QJsonArray& tracks);
     void addClientId(QUrlQuery& query) const;
     QMap<QString, QByteArray> authHeaders() const;
+    // id аккаунта из /me, спрашивается один раз
+    void withUserId(std::function<void(const QString&)> next);
     void fetchPlaylistTracksMetadata(const QString& playlistName, const QString& coverUrl, const QStringList& trackIds);
     void fetchNextPlaylistChunk(const QString& playlistName, const QString& coverUrl, QStringList* remainingIds, QVariantList* allTracks, const QStringList& originalIds);
     QVariantList parseSoundCloudTracks(const QJsonArray& tracks);
@@ -60,6 +66,7 @@ private:
     QDateTime m_oauthExpires;
     QString m_quality = "128";
     QMap<QString, QString> m_trackLinks;
+    QString m_userId;
 };
 
 #endif

@@ -64,6 +64,7 @@ Application::Application(QObject *parent) : QObject(parent) {
     auto applyWaveSettings = [this]() {
         services->setMixedWave(settings->getMixedWaveEnabled());
         services->setSyncToYandex(settings->getSyncToYandex());
+        services->setSyncToSoundCloud(settings->getSyncToSoundCloud());
         services->setSmartWaves(settings->getSmartWavesEnabled());
         // morph:new и подобные свои, в сессию Яндекса они не уходят
         QStringList seeds;

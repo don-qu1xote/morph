@@ -305,6 +305,16 @@ bool SettingsManager::getSmartWavesEnabled() {
     return m_data["smart_waves"].toBool(true);
 }
 
+void SettingsManager::setSyncToSoundCloud(bool enabled) {
+    m_data["sync_to_soundcloud"] = enabled;
+    save();
+    emit settingsChanged();
+}
+
+bool SettingsManager::getSyncToSoundCloud() {
+    return m_data["sync_to_soundcloud"].toBool(false);
+}
+
 void SettingsManager::setSyncToYandex(bool enabled) {
     m_data["sync_to_yandex"] = enabled;
     save();

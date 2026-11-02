@@ -1989,6 +1989,45 @@ ApplicationWindow {
                                         Button {
                                             Layout.fillWidth: true; Layout.preferredHeight: 50
                                             onClicked: (mouse) => {
+                                                var newState = !MorphSettings.getSyncToSoundCloud()
+                                                MorphSettings.setSyncToSoundCloud(newState)
+                                                showToast("Sync to SoundCloud " + (newState ? "enabled" : "disabled"))
+                                            }
+                                            background: Rectangle { color: systemTheme.card; radius: 10; border.color: systemTheme.border }
+                                            contentItem: RowLayout {
+                                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                                                anchors.leftMargin: 15; anchors.rightMargin: 15; spacing: 10
+                                                Image {
+                                                    source: "qrc:/assets/soundcloud_icon.svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; Layout.alignment: Qt.AlignVCenter
+                                                    sourceSize.width: 40; sourceSize.height: 40
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.text }
+                                                }
+                                                Text { text: "Sync to SoundCloud"; color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 14; font.weight: Font.Medium; Layout.fillWidth: true; verticalAlignment: Text.AlignVCenter }
+                                                Switch {
+                                                    id: syncSoundCloudSwitch; Layout.alignment: Qt.AlignVCenter; Layout.preferredHeight: 20; padding: 0
+                                                    checked: (window.settingsVersion, MorphSettings.getSyncToSoundCloud())
+                                                    onToggled: {
+                                                        MorphSettings.setSyncToSoundCloud(checked)
+                                                        showToast("Sync to SoundCloud " + (checked ? "enabled" : "disabled"))
+                                                    }
+                                                    indicator: Rectangle {
+                                                        implicitWidth: 36; implicitHeight: 20; radius: 10
+                                                        color: syncSoundCloudSwitch.checked ? "#b57339" : systemTheme.container
+                                                        Behavior on color { ColorAnimation { duration: 150 } }
+                                                        Rectangle {
+                                                            x: syncSoundCloudSwitch.checked ? parent.width - width - 2 : 2; y: 2
+                                                            width: 16; height: 16; radius: 8; color: systemTheme.text
+                                                            Behavior on x { NumberAnimation { duration: 150 } }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                                        }
+
+                                        Button {
+                                            Layout.fillWidth: true; Layout.preferredHeight: 50
+                                            onClicked: (mouse) => {
                                                 var newState = !MorphSettings.getDiscordRpcEnabled()
                                                 MorphSettings.setDiscordRpcEnabled(newState)
                                                 showToast("Discord RPC " + (newState ? "enabled" : "disabled"))

@@ -84,6 +84,9 @@ public slots:
     // чтобы его рекомендации учитывали и их. Меняет коллекцию, поэтому выключено
     void setSyncToYandex(bool enabled);
     bool getSyncToYandex();
+    // песни MAIN лайками в аккаунт SoundCloud, чтобы его рекомендации учились на них
+    void setSyncToSoundCloud(bool enabled);
+    bool getSyncToSoundCloud();
     // настройки Моей волны: ключ (diversity, moodEnergy, language) и сид значения
     void setWaveSetting(const QString& key, const QString& seed);
     QVariantMap getWaveSettings();

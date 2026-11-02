@@ -65,6 +65,7 @@ public slots:
     void setSoundCloudClientId(const QString& clientId);
     void setMixedWave(bool enabled);
     void setSyncToYandex(bool enabled) { m_syncToYandex = enabled; }
+    void setSyncToSoundCloud(bool enabled);
     void setSmartWaves(bool enabled) { m_smartWaves = enabled; }
     // familiar, balanced или new: сколько незнакомых артистов в волнах и миксах
     void setDiscovery(const QString& level);
@@ -100,10 +101,13 @@ private:
     BaseService* service(const QString& name) const;
     void directStreamFailed(const QString& trackId);
     void linkNext();
+    bool linkYandex();
+    bool syncSoundCloud();
     QVariantMap knownTrack(const QString& trackId) const;
     void deliverArtist(const QString& requested, QVariantMap info);
 
     QString m_yandexToken;
+    QString m_soundcloudToken;
     // ищутся заранее и ещё не включены
     QSet<QString> m_prefetching;
     // включены напрямую с SoundCloud или YouTube, а не как замена
@@ -111,6 +115,9 @@ private:
     QTimer* m_linkTimer;
     int m_linksThisRun = 0;
     bool m_syncToYandex = false;
+    bool m_syncToSoundCloud = false;
+    int m_soundcloudWrites = 0;
+    int m_soundcloudSearches = 0;
     bool m_smartWaves = true;
     bool m_seededWave = false;
     Library* m_library;

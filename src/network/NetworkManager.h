@@ -18,6 +18,9 @@ public:
     void rawGet(const QUrl& url, const QMap<QString, QByteArray>& headers, std::function<void(QNetworkReply*)> callback);
     void post(const QUrl& url, const QByteArray& data, const QMap<QString, QByteArray>& headers,
               std::function<void(QNetworkReply*)> callback, bool showErrors = true);
+    // PUT, DELETE и прочее, чего нет у get и post: лайки SoundCloud ставятся PUT
+    void send(const QByteArray& verb, const QUrl& url, const QByteArray& data, const QMap<QString, QByteArray>& headers,
+              std::function<void(QNetworkReply*)> callback, bool showErrors = true);
 
 signals:
     void errorOccurred(const QString& message);

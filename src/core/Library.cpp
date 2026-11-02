@@ -2,6 +2,7 @@
 #include "TrackMatch.h"
 #include <QDateTime>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <algorithm>
@@ -98,24 +99,41 @@ QList<QVariantMap> Library::alternatives(const QString& trackId) const {
     return out;
 }
 
-QString Library::yandexId(const QString& songKey) const {
+QString Library::sourceId(const QString& songKey, const QString& service) const {
+    return source(songKey, service).value("id").toString();
+}
+
+QVariantMap Library::source(const QString& songKey, const QString& service) const {
     auto song = m_songs.constFind(songKey);
     if (song != m_songs.constEnd()) {
         for (const QVariantMap& t : song->liked) {
-            if (t["service"].toString() == "Yandex") return t["id"].toString();
+            if (t["service"].toString() == service) return t;
         }
     }
-    return m_links.value(songKey).value("Yandex").value("id").toString();
+    return m_links.value(songKey).value(service);
 }
 
-QString Library::nextToLink() const {
+// у Яндекса ключ без префикса: так он записан с первой версии library.json
+static QString triedKey(const QString& songKey, const QString& service) {
+    return service == "Yandex" ? songKey : service + "|" + songKey;
+}
+
+QString Library::nextToLink(const QString& service) const {
     qint64 now = QDateTime::currentSecsSinceEpoch();
     for (const QString& key : m_order) {
-        if (key.startsWith("id:") || !yandexId(key).isEmpty()) continue;
-        if (now - m_tried.value(key, 0) < kRetryLinkSecs) continue;
+        if (key.startsWith("id:") || !sourceId(key, service).isEmpty()) continue;
+        if (now - m_tried.value(triedKey(key, service), 0) < kRetryLinkSecs) continue;
         return key;
     }
     return {};
+}
+
+void Library::setMirrored(const QString& service, const QString& songKey, bool on) {
+    QStringList& keys = m_mirrored[service];
+    if (on == keys.contains(songKey)) return;
+    if (on) keys.append(songKey);
+    else keys.removeAll(songKey);
+    save();
 }
 
 QVariantMap Library::representative(const QString& songKey) const {
@@ -123,8 +141,8 @@ QVariantMap Library::representative(const QString& songKey) const {
     return song == m_songs.constEnd() ? QVariantMap() : best(*song);
 }
 
-void Library::markLinkTried(const QString& songKey) {
-    m_tried[songKey] = QDateTime::currentSecsSinceEpoch();
+void Library::markLinkTried(const QString& songKey, const QString& service) {
+    m_tried[triedKey(songKey, service)] = QDateTime::currentSecsSinceEpoch();
     save();
 }
 
@@ -132,7 +150,7 @@ void Library::link(const QString& songKey, const QVariantMap& track) {
     QVariantMap saved = slim(track);
     QString service = saved["service"].toString();
     m_links[songKey][service] = saved;
-    m_tried.remove(songKey);
+    m_tried.remove(triedKey(songKey, service));
     save();
 
     auto song = m_songs.find(songKey);
@@ -185,6 +203,10 @@ void Library::load() {
     }
     QJsonObject tried = saved["tried"].toObject();
     for (auto it = tried.begin(); it != tried.end(); ++it) m_tried.insert(it.key(), it.value().toInteger());
+    QJsonObject mirrored = saved["mirrored"].toObject();
+    for (auto it = mirrored.begin(); it != mirrored.end(); ++it) {
+        for (const auto& key : it.value().toArray()) m_mirrored[it.key()].append(key.toString());
+    }
 }
 
 void Library::save() const {
@@ -196,9 +218,13 @@ void Library::save() const {
     }
     QJsonObject tried;
     for (auto it = m_tried.cbegin(); it != m_tried.cend(); ++it) tried.insert(it.key(), it.value());
+    QJsonObject mirrored;
+    for (auto it = m_mirrored.cbegin(); it != m_mirrored.cend(); ++it)
+        mirrored.insert(it.key(), QJsonArray::fromStringList(*it));
 
     QFile file(m_path);
     if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(QJsonObject{{"links", links}, {"tried", tried}}).toJson(QJsonDocument::Compact));
+        QJsonObject saved{{"links", links}, {"tried", tried}, {"mirrored", mirrored}};
+        file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
     }
 }

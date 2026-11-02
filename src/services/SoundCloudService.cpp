@@ -34,6 +34,56 @@ void SoundCloudService::setToken(const QString& token) {
     } else {
         m_clientId = m_token;
     }
+    m_userId.clear();
+}
+
+bool SoundCloudService::canWrite() const {
+    return !authHeaders().isEmpty();
+}
+
+void SoundCloudService::withUserId(std::function<void(const QString&)> next) {
+    if (!m_userId.isEmpty()) {
+        next(m_userId);
+        return;
+    }
+    QUrl url(m_api + "/me");
+    QUrlQuery q;
+    addClientId(q);
+    url.setQuery(q);
+    net->get(
+        url, authHeaders(),
+        [this, next](QNetworkReply* reply) {
+            QString id = QJsonDocument::fromJson(reply->readAll()).object()["id"].toVariant().toString();
+            if (reply->error() == QNetworkReply::NoError) m_userId = id;
+            next(m_userId);
+        },
+        false);
+}
+
+// как веб-клиент: PUT /users/{я}/track_likes/{трек}, снять тем же адресом через DELETE
+void SoundCloudService::setLiked(const QString& trackId, bool liked, std::function<void(bool)> done) {
+    if (!canWrite()) {
+        done(false);
+        return;
+    }
+    withUserId([this, trackId, liked, done](const QString& userId) {
+        if (userId.isEmpty()) {
+            done(false);
+            return;
+        }
+        QUrl url(QString("%1/users/%2/track_likes/%3").arg(m_api, userId, trackId));
+        QUrlQuery q;
+        addClientId(q);
+        url.setQuery(q);
+        net->send(
+            liked ? "PUT" : "DELETE", url, {}, authHeaders(),
+            [done, liked](QNetworkReply* reply) {
+                int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                // снимают лайк, которого уже нет: для сверки это тоже успех
+                done(reply->error() == QNetworkReply::NoError || (!liked && status == 404));
+            },
+            false);
+    });
 }
 
 void SoundCloudService::setAudioQuality(const QString& quality) {

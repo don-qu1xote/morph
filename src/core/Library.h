@@ -37,16 +37,25 @@ public:
     // Другие версии той же песни для фолбэка: лайкнутые и связи, без сервиса
     // самого трека и без версий, которые сервис не отдаёт
     QList<QVariantMap> alternatives(const QString& trackId) const;
-    // id песни в Яндексе: лайкнутый или найденный. Связь живёт и после того,
+    // id песни на площадке: лайкнутый или найденный. Связь живёт и после того,
     // как песню убрали из MAIN, чтобы снять лайк и там
-    QString yandexId(const QString& songKey) const;
+    QString sourceId(const QString& songKey, const QString& service) const;
+    QVariantMap source(const QString& songKey, const QString& service) const;
+    QString yandexId(const QString& songKey) const { return sourceId(songKey, "Yandex"); }
 
-    // Песня без версии в Яндексе, которую давно не искали; пусто, если таких нет.
-    // По найденной связи волна, лайки и фолбэк работают и для SoundCloud
-    QString nextToLink() const;
+    // Песня без версии на площадке, которую давно там не искали; пусто, если
+    // таких нет. По найденной связи работают фолбэк, лайки и волны
+    QString nextToLink(const QString& service = "Yandex") const;
     QVariantMap representative(const QString& songKey) const;
-    void markLinkTried(const QString& songKey);
+    void markLinkTried(const QString& songKey, const QString& service = "Yandex");
     void link(const QString& songKey, const QVariantMap& track);
+
+    QStringList songKeys() const { return m_order; }
+    bool hasSong(const QString& songKey) const { return m_songs.contains(songKey); }
+    // Песни, которым morph сам поставил лайк на площадке. Сверка идёт по ним:
+    // в MAIN есть, а лайка нет, значит поставить; лайк есть, а в MAIN нет, снять
+    QStringList mirrored(const QString& service) const { return m_mirrored.value(service); }
+    void setMirrored(const QString& service, const QString& songKey, bool on);
 
 signals:
     void changed();
@@ -71,8 +80,9 @@ private:
     QHash<QString, QString> m_keyOf;
     // songKey: сервис: трек
     QHash<QString, QHash<QString, QVariantMap>> m_links;
-    // songKey: когда искали в последний раз, секунды
+    // songKey (у не Яндекса с площадкой впереди): когда искали в последний раз
     QHash<QString, qint64> m_tried;
+    QHash<QString, QStringList> m_mirrored;
 };
 
 #endif

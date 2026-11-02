@@ -1,5 +1,6 @@
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -399,6 +400,64 @@ private slots:
         QCOMPARE(events[0].track["artist"].toString(), QString("Zamay"));
         QVERIFY(events[0].skipped());
         QCOMPARE(events[1].kind, ListenEvent::Dislike);
+    }
+
+    // MAIN лайками на SoundCloud: версия ищется там, ставится лайк, а когда
+    // песню убирают из MAIN, лайк снимается
+    void mainIsMirroredToSoundCloud() {
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
+        soundcloudApi.on("GET", "/me", [](const HttpRequest&) { return jsonBody({{"id", 555}}); });
+        soundcloudApi.on("GET", "/search/tracks", [](const HttpRequest&) {
+            QJsonObject found{{"id", 88},
+                              {"title", "Zamay - Неошансон"},
+                              {"duration", 187000},
+                              {"user", QJsonObject{{"username", "uploader"}}}};
+            return jsonBody({{"collection", QJsonArray{found}}});
+        });
+        soundcloudApi.on("PUT", "/users/555/track_likes/88",
+                         [](const HttpRequest&) { return HttpResponse{200, "{}"}; });
+        soundcloudApi.on("DELETE", "/users/555/track_likes/88",
+                         [](const HttpRequest&) { return HttpResponse{200, "{}"}; });
+
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        services.setSoundCloudClientId("2-oauth");
+        services.setSyncToSoundCloud(true);
+        soundcloudApi.requests.clear();
+
+        services.library()->syncLikes({QVariantMap{
+            {"id", "31"}, {"service", "Yandex"}, {"artist", "Zamay"}, {"title", "Неошансон"}, {"durationMs", 187000}}});
+        QVERIFY(soundcloudApi.waitFor("/users/555/track_likes/88", 1, 10000));
+        HttpRequest like = soundcloudApi.requestsTo("/users/555/track_likes/88")[0];
+        QCOMPARE(like.method, QByteArray("PUT"));
+        QCOMPARE(like.headers["authorization"], QByteArray("OAuth 2-oauth"));
+        QTRY_COMPARE(services.library()->mirrored("SoundCloud").size(), 1);
+
+        services.library()->syncLikes({});
+        QVERIFY(soundcloudApi.waitFor("/users/555/track_likes/88", 2, 10000));
+        QCOMPARE(soundcloudApi.requestsTo("/users/555/track_likes/88")[1].method, QByteArray("DELETE"));
+        QTRY_VERIFY(services.library()->mirrored("SoundCloud").isEmpty());
+    }
+
+    // суточный токен истёк: в SoundCloud ничего не пишется
+    void expiredTokenWritesNothing() {
+        QFile::remove(PathProvider::getDataPath() + "/library.json");
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QByteArray claims =
+            QJsonDocument(QJsonObject{{"client_id", "web"}, {"exp", 1000}}).toJson(QJsonDocument::Compact);
+        services.setSoundCloudClientId("eyJhbGciOiJSUzI1NiJ9." + claims.toBase64(QByteArray::Base64UrlEncoding) +
+                                       ".sig");
+        services.setSyncToSoundCloud(true);
+        soundcloudApi.requests.clear();
+
+        services.library()->syncLikes(
+            {QVariantMap{{"id", "32"}, {"service", "Yandex"}, {"artist", "A"}, {"title", "B"}}});
+        QTest::qWait(1800);
+        QVERIFY(soundcloudApi.requestsTo("/me").isEmpty());
+        QVERIFY(soundcloudApi.requestsTo("/search/tracks").isEmpty());
     }
 
     // без синхронизации связь ищется, но коллекция в Яндексе не меняется

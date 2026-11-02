@@ -11,6 +11,8 @@
 
 // связи с Яндексом ищутся в фоне: столько за запуск и с такой паузой
 static const int kLinksPerRun = 40;
+// лайков в SoundCloud за запуск: тысяча песен MAIN разойдётся за несколько дней
+static const int kSoundCloudWritesPerRun = 60;
 static const int kLinkPauseMs = 1500;
 // та же песня с уверенностью, как у фолбэка: иначе лайк уйдёт не тому треку
 static const double kLinkScore = 0.85;
@@ -380,10 +382,17 @@ QVariantMap ServiceManager::knownTrack(const QString& trackId) const {
 
 // Песни из MAIN без версии в Яндексе ищутся там по одной и с паузой, чтобы
 // сотни лайков с SoundCloud не ушли в Яндекс одной пачкой
+// Фоновая сверка MAIN с площадками, по одному запросу на тик: сначала версии
+// в Яндексе, потом лайки на SoundCloud и поиск версий там
 void ServiceManager::linkNext() {
-    if (m_yandexToken.isEmpty() || m_linksThisRun >= kLinksPerRun) return;
+    if (linkYandex()) return;
+    syncSoundCloud();
+}
+
+bool ServiceManager::linkYandex() {
+    if (m_yandexToken.isEmpty() || m_linksThisRun >= kLinksPerRun) return false;
     QString key = m_library->nextToLink();
-    if (key.isEmpty()) return;
+    if (key.isEmpty()) return false;
 
     QVariantMap track = m_library->representative(key);
     m_library->markLinkTried(key);
@@ -406,6 +415,75 @@ void ServiceManager::linkNext() {
         }
         m_linkTimer->start();
     });
+    return true;
+}
+
+// MAIN лайками на SoundCloud: тогда его related и миксы подбирают под тебя.
+// Это сверка, а не события: что не успело из-за протухшего токена, уйдёт в
+// следующий раз, когда токен свежий
+bool ServiceManager::syncSoundCloud() {
+    if (!m_syncToSoundCloud || !soundcloud->canWrite() || m_soundcloudWrites >= kSoundCloudWritesPerRun) return false;
+
+    // не вышло, значит токен истёк или SoundCloud против: до следующего запуска
+    auto written = [this](const QString& key, bool on) {
+        return [this, key, on](bool ok) {
+            if (ok) m_library->setMirrored("SoundCloud", key, on);
+            else m_soundcloudWrites = kSoundCloudWritesPerRun;
+            m_linkTimer->start();
+        };
+    };
+
+    const QStringList mirrored = m_library->mirrored("SoundCloud");
+    for (const QString& key : mirrored) {
+        if (m_library->hasSong(key)) continue;
+        // песню убрали из MAIN: снимаем лайк, который ставил morph
+        QString id = m_library->sourceId(key, "SoundCloud");
+        if (id.isEmpty()) {
+            m_library->setMirrored("SoundCloud", key, false);
+            continue;
+        }
+        ++m_soundcloudWrites;
+        soundcloud->setLiked(id, false, written(key, false));
+        return true;
+    }
+
+    const QStringList keys = m_library->songKeys();
+    for (const QString& key : keys) {
+        QVariantMap source = m_library->source(key, "SoundCloud");
+        if (mirrored.contains(key) || source.isEmpty()) continue;
+        // id должен пережить снятый лайк, иначе потом нечего будет снимать
+        m_library->link(key, source);
+        ++m_soundcloudWrites;
+        soundcloud->setLiked(source["id"].toString(), true, written(key, true));
+        return true;
+    }
+
+    if (m_soundcloudSearches >= kLinksPerRun) return false;
+    QString key = m_library->nextToLink("SoundCloud");
+    if (key.isEmpty()) return false;
+    QVariantMap track = m_library->representative(key);
+    m_library->markLinkTried(key, "SoundCloud");
+    ++m_soundcloudSearches;
+    soundcloud->searchTracks(TrackMatch::searchQuery(track), 10, [this, key, track](const QVariantList& found) {
+        QVariantMap best;
+        double bestScore = kLinkScore;
+        for (const QVariant& v : found) {
+            double score = TrackMatch::score(track, v.toMap());
+            if (score >= bestScore) {
+                bestScore = score;
+                best = v.toMap();
+            }
+        }
+        if (!best.isEmpty()) m_library->link(key, best);
+        m_linkTimer->start();
+    });
+    return true;
+}
+
+void ServiceManager::setSyncToSoundCloud(bool enabled) {
+    bool turnedOn = enabled && !m_syncToSoundCloud;
+    m_syncToSoundCloud = enabled;
+    if (turnedOn) m_linkTimer->start();
 }
 
 // Играет не та версия: файл в кэше от прошлой выкидываем, иначе QML снова
@@ -550,7 +628,13 @@ void ServiceManager::setYandexToken(const QString& token) {
 }
 
 void ServiceManager::setSoundCloudClientId(const QString& clientId) {
+    // QML зовёт это на каждом старте и перезагрузке стиля
+    if (clientId == m_soundcloudToken) return;
+    m_soundcloudToken = clientId;
     soundcloud->setToken(clientId);
+    // свежий суточный токен: сверка с SoundCloud продолжается с того, на чём встала
+    m_soundcloudWrites = 0;
+    if (soundcloud->canWrite()) m_linkTimer->start();
 }
 
 void ServiceManager::setMixedWave(bool enabled) {

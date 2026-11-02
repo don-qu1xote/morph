@@ -140,7 +140,10 @@ flowchart LR
     LIB -->|"известные версии"| F[FallbackFinder]
     LIB -->|"tracks(): лучшая версия + alsoOn"| Q[экран MAIN]
     LIB -.->|"Sync to Yandex: лайк, прослушивание"| Y[YandexService]
+    LIB -.->|"Sync to SoundCloud: сверка лайков"| SCS[SoundCloudService]
 ```
+
+Сверка с площадками описана в [ADR-0016](adr/0016-main-on-every-service.md).
 
 ## История и профиль вкуса
 

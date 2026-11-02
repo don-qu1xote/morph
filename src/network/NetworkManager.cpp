@@ -56,3 +56,20 @@ void NetworkManager::post(const QUrl& url, const QByteArray& data, const QMap<QS
         reply->deleteLater();
     });
 }
+
+void NetworkManager::send(const QByteArray& verb, const QUrl& url, const QByteArray& data,
+                          const QMap<QString, QByteArray>& headers, std::function<void(QNetworkReply*)> callback,
+                          bool showErrors) {
+    QNetworkRequest request(url);
+    request.setTransferTimeout(10000);
+    applyHeaders(request, headers);
+
+    QNetworkReply* reply = manager->sendCustomRequest(request, verb, data);
+    connect(reply, &QNetworkReply::finished, [this, reply, callback, url, showErrors]() {
+        if (showErrors && reply->error() != QNetworkReply::NoError) {
+            emit errorOccurred(QString("Network Error: %1 (%2)").arg(reply->errorString(), url.toString()));
+        }
+        callback(reply);
+        reply->deleteLater();
+    });
+}
