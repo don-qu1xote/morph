@@ -9,6 +9,7 @@
 #include <memory>
 
 class CandidateFilter;
+class KnowledgeBase;
 class Library;
 class MusicSpace;
 class Recommender;
@@ -21,7 +22,8 @@ class YandexService;
 //   Rediscover: лайки, которые давно не звучали;
 //   Daily Mix: группы артистов, которых слушаешь вместе или которые рядом на
 //     карте музыки, плюс похожее новое вокруг центра группы;
-//   Discover Weekly: незнакомые артисты рядом с любимым, раз в неделю;
+//   Discover Weekly: незнакомые артисты рядом с любимым и рядом с долгим
+//     вкусом на карте музыки, раз в неделю;
 //   Release Radar: свежие релизы любимых артистов.
 // Карточки считаются на месте из истории и MAIN. Треки по клику: где нужно
 // похожее или новые альбомы, это несколько запросов в Яндекс и SoundCloud
@@ -42,6 +44,8 @@ public:
         m_space = std::move(space);
         m_radio = radio;
     }
+    // откуда брать популярное у незнакомых артистов для Discover Weekly
+    void setKnowledge(KnowledgeBase* knowledge) { m_knowledge = knowledge; }
 
     // Волна по списку треков, например по плейлисту: похожее на три случайных
     // трека из него и пара его собственных. Партии в seededBatch, следующую
@@ -80,11 +84,15 @@ private:
 
     void buildDailyMix(int index);
     void buildDiscover();
+    // отбор, витрина по треку на артиста и запись на неделю
+    void finishDiscover(const QVariantList& found);
     void buildReleaseRadar();
     // похожее на seeds из Яндекса и SoundCloud, все ответы разом
     void similarTo(const QVariantList& seeds, int soundcloudSeeds, Tracks done);
     // соседи по Last.fm нескольких треков, уже через отбор кандидатов
     void tasteNeighbors(const QVariantList& tracks, int count, Tracks done);
+    // популярное у незнакомых артистов рядом с долгим вкусом, через отбор кандидатов
+    void strangersNearTaste(Tracks done);
     // кандидаты по названию плейлиста
     void byTitle(const QString& name, Tracks done);
 
@@ -99,6 +107,7 @@ private:
     CandidateFilter* filter = nullptr;
     std::function<std::shared_ptr<const MusicSpace>()> m_space;
     TasteRadio* m_radio = nullptr;
+    KnowledgeBase* m_knowledge = nullptr;
     QString m_discoverPath;
 
     QVariantList m_seeds;

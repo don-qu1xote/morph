@@ -1,5 +1,6 @@
 #include "MorphMixes.h"
 #include "CandidateFilter.h"
+#include "KnowledgeBase.h"
 #include "Library.h"
 #include "MusicSpace.h"
 #include "Recommender.h"
@@ -50,6 +51,15 @@ static const double kSpaceShare = 0.5;
 static const double kOffCenter = 0.2;
 // соседей по Last.fm на Daily Mix, до отбора
 static const int kMixNeighbors = 20;
+// Discover Weekly с карты: до стольких незнакомых артистов ближе всего к
+// долгому вкусу, по два их популярных трека. Дальше kStrangerFloor уже не
+// «рядом со вкусом», таких не зовём, даже если ближе никого нет
+static const int kStrangers = 15;
+static const int kStrangerTracks = 2;
+static const int kStrangerPool = 100;
+static const double kStrangerFloor = 0.3;
+// подборка, сохранённая прошлой версией, пересобирается сразу, а не в понедельник
+static const int kDiscoverVersion = 2;
 // сколько треков плейлиста берётся в образцы для подбора
 static const int kSuggestSeeds = 3;
 // из скольких найденных по названию плейлистов брать треки
@@ -451,52 +461,100 @@ void MorphMixes::buildDiscover() {
     if (cached.open(QIODevice::ReadOnly)) {
         QJsonObject saved = QJsonDocument::fromJson(cached.readAll()).object();
         QVariantList tracks = saved["tracks"].toArray().toVariantList();
-        if (saved["week"].toInt() == week() && !tracks.isEmpty()) {
+        if (saved["week"].toInt() == week() && saved["version"].toInt() == kDiscoverVersion && !tracks.isEmpty()) {
             emit ready("Discover Weekly", saved["cover"].toString(), tracks);
             return;
         }
     }
 
     QVariantList seedList = seeds(8);
-    if (seedList.isEmpty()) {
+    bool mapped = m_space && m_space() && rec->taste().longTerm(rec->now());
+    if (seedList.isEmpty() && !mapped) {
         emit failed("Finish or like a few Yandex tracks first");
         return;
     }
     similarTo(seedList, 2, [this](const QVariantList& similar) {
-        qint64 now = rec->now();
-        QVariantList fresh;
-        QSet<QString> seen;
-        for (const QVariant& v : similar) {
-            QVariantMap t = v.toMap();
-            QString key = TrackMatch::songKey(t);
-            if (seen.contains(key) || !rec->isNew(t) || rec->profile().affinityOf(t, now) < 0) continue;
-            seen.insert(key);
-            fresh.append(t);
-        }
-
-        // витрина новых имён: по треку на артиста
-        QVariantList tracks;
-        QSet<QString> artists;
-        for (const QVariant& v : rec->rank(fresh, int(fresh.size()), false, 1.0)) {
-            QString artist = TrackMatch::artistKey(v.toMap());
-            if (artists.contains(artist)) continue;
-            artists.insert(artist);
-            tracks.append(v);
-            if (tracks.size() >= kListSize) break;
-        }
-        if (tracks.isEmpty()) {
-            emit failed("Nothing new this time, try again later");
-            return;
-        }
-
-        QString cover = card({}, {}, {}, tracks)["coverUrl"].toString();
-        QFile file(m_discoverPath);
-        if (file.open(QIODevice::WriteOnly)) {
-            QJsonObject saved{{"week", week()}, {"cover", cover}, {"tracks", QJsonArray::fromVariantList(tracks)}};
-            file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
-        }
-        emit ready("Discover Weekly", cover, tracks);
+        strangersNearTaste([this, similar](const QVariantList& strangers) { finishDiscover(similar + strangers); });
     });
+}
+
+void MorphMixes::finishDiscover(const QVariantList& found) {
+    qint64 now = rec->now();
+    QVariantList fresh;
+    QSet<QString> seen;
+    for (const QVariant& v : found) {
+        QVariantMap t = v.toMap();
+        QString key = TrackMatch::songKey(t);
+        if (seen.contains(key) || !rec->isNew(t) || rec->profile().affinityOf(t, now) < 0) continue;
+        seen.insert(key);
+        fresh.append(t);
+    }
+
+    // витрина новых имён: по треку на артиста
+    QVariantList tracks;
+    QSet<QString> artists;
+    for (const QVariant& v : rec->rank(fresh, int(fresh.size()), false, 1.0)) {
+        QString artist = TrackMatch::artistKey(v.toMap());
+        if (artists.contains(artist)) continue;
+        artists.insert(artist);
+        tracks.append(v);
+        if (tracks.size() >= kListSize) break;
+    }
+    if (tracks.isEmpty()) {
+        emit failed("Nothing new this time, try again later");
+        return;
+    }
+
+    QString cover = card({}, {}, {}, tracks)["coverUrl"].toString();
+    QFile file(m_discoverPath);
+    if (file.open(QIODevice::WriteOnly)) {
+        QJsonObject saved{{"week", week()},
+                          {"version", kDiscoverVersion},
+                          {"cover", cover},
+                          {"tracks", QJsonArray::fromVariantList(tracks)}};
+        file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
+    }
+    emit ready("Discover Weekly", cover, tracks);
+}
+
+// Незнакомые артисты, ближайшие на карте к долгому вкусу, и их популярное по
+// Last.fm. Долгий вкус, а не сессия: подборка на неделю, а не на этот вечер.
+// Это открытия, которых нет в «похожем» у площадок: они идут от вкуса целиком,
+// а не от трёх треков
+void MorphMixes::strangersNearTaste(Tracks done) {
+    const qint64 now = rec->now();
+    std::shared_ptr<const MusicSpace> space = m_space ? m_space() : nullptr;
+    std::optional<MusicSpace::Vector> taste = rec->taste().longTerm(now);
+    if (!space || !taste || !m_knowledge || !(m_knowledge->hasSource() || m_knowledge->size() > 0)) {
+        done({});
+        return;
+    }
+    QStringList strangers;
+    for (const auto& [key, closeness] : space->nearest(*taste, kStrangerPool)) {
+        if (closeness < kStrangerFloor || strangers.size() >= kStrangers) break;
+        if (rec->profile().known(key) || rec->profile().affinity(key, now) < 0) continue;
+        strangers.append(space->name(key));
+    }
+    if (strangers.isEmpty()) {
+        done({});
+        return;
+    }
+
+    struct Gather {
+        int pending = 0;
+        QVariantList found;
+    };
+    auto gather = std::make_shared<Gather>();
+    gather->pending = int(strangers.size());
+    for (const QString& name : std::as_const(strangers)) {
+        m_knowledge->topTracks(name, [this, gather, done](const QList<KnowledgeBase::Neighbor>& top) {
+            for (int i = 0; i < qMin(kStrangerTracks, int(top.size())); ++i)
+                gather->found.append(TasteRadio::playable(top[i].artist, top[i].title, top[i].durationMs));
+            if (--gather->pending > 0) return;
+            if (filter && !gather->found.isEmpty()) filter->process(gather->found, "Last.fm", done);
+            else done(gather->found);
+        });
+    }
 }
 
 // Свежие альбомы и синглы любимых артистов, новые первыми

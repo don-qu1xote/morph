@@ -65,7 +65,7 @@ void TasteRadio::candidates(const QList<QVariantMap>& seeds, int count, std::fun
                 int& n = perArtist[TrackMatch::artistKey(QVariantMap{{"artist", p.artist}})];
                 if (n >= kPerArtist) continue;
                 ++n;
-                diverse.append(playable(p));
+                diverse.append(playable(p.artist, p.title, p.durationMs));
                 if (diverse.size() >= count) break;
             }
             done(diverse);
@@ -73,11 +73,11 @@ void TasteRadio::candidates(const QList<QVariantMap>& seeds, int count, std::fun
     }
 }
 
-QVariantMap TasteRadio::playable(const Pick& pick) {
-    return {{"id", YouTubeService::queryTrackId(pick.artist + " - " + pick.title)},
+QVariantMap TasteRadio::playable(const QString& artist, const QString& title, qint64 durationMs) {
+    return {{"id", YouTubeService::queryTrackId(artist + " - " + title)},
             {"service", "YouTube"},
-            {"artist", pick.artist},
-            {"title", pick.title},
-            {"durationMs", pick.durationMs},
+            {"artist", artist},
+            {"title", title},
+            {"durationMs", durationMs},
             {"via", "Last.fm"}};
 }

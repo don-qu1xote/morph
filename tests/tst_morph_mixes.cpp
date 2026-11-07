@@ -99,6 +99,7 @@ class TestMorphMixes : public QObject {
             rec.setVectors([space](const QVariantMap& t) { return space->song(t, {}); });
             radio.setSpace([space]() { return space; });
             mixes.setTaste([space]() { return space; }, &radio);
+            mixes.setKnowledge(&knowledge);
         }
 
         void likes(const QVariantList& tracks) {
@@ -321,6 +322,29 @@ private slots:
         int asked = api.requestsTo("/tracks/1/similar").size();
         QCOMPARE(ids(w.build("morph:discover")), ids(first));
         QCOMPARE(api.requestsTo("/tracks/1/similar").size(), asked);
+    }
+
+    // Discover Weekly с карты: незнакомые артисты рядом с долгим вкусом и их
+    // популярное по Last.fm. Знакомых и далёких от вкуса в ней нет
+    void discoverFindsStrangersNearTaste() {
+        World w(dir.path());
+        w.likes({track("1", "Zamay"), track("2", "Saluki"), track("3", "Zamay", "Second")});
+        w.taste(twoCrowds());
+        lastfmApi.on("GET", "/2.0/", [](const HttpRequest& r) {
+            QString artist = r.query.queryItemValue("artist");
+            QJsonObject who{{"name", artist}};
+            QJsonArray tracks{QJsonObject{{"name", artist + " Hit"}, {"playcount", "1000"}, {"artist", who}},
+                              QJsonObject{{"name", artist + " B-side"}, {"playcount", "300"}, {"artist", who}}};
+            return jsonBody({{"toptracks", QJsonObject{{"track", tracks}}}});
+        });
+
+        QVariantList list = w.build("morph:discover");
+        QStringList names = artists(list);
+        std::sort(names.begin(), names.end());
+        QCOMPARE(names, QStringList({"Markul", "Pyrokinesis"}));
+        for (const QVariant& v : list) QCOMPARE(v.toMap()["via"].toString(), QString("Last.fm"));
+        // у каждого самое популярное, B-side второй в очереди
+        for (const QVariant& v : list) QVERIFY(v.toMap()["title"].toString().endsWith(" Hit"));
     }
 
     void releaseRadarTakesFreshAlbums() {

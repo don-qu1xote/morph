@@ -30,6 +30,8 @@ public:
 
     // оценка соседа: похожесть по Last.fm и близость к вкусу пополам
     static double score(double match, double cosine, bool hasVector);
+    // песня по названию как запрос к YouTube с via = "Last.fm"; Яндекс находит отбор кандидатов
+    static QVariantMap playable(const QString& artist, const QString& title, qint64 durationMs);
 
 private:
     struct Pick {
@@ -38,7 +40,6 @@ private:
         qint64 durationMs = 0;
         double score = 0;
     };
-    static QVariantMap playable(const Pick& pick);
 
     KnowledgeBase* knowledge;
     Recommender* recommender;
