@@ -48,6 +48,7 @@ public slots:
     void deletePlaylist(const QString& name);
     bool addToPlaylist(const QString& playlistName, const QVariantMap& track);
     void removeFromPlaylist(const QString& playlistName, const QString& trackId);
+    bool setPlaylistTracks(const QString& playlistName, const QVariantList& tracks);
     QVariantMap getPlaylists();
     // Лёгкие запросы для интерфейса. getPlaylists отдаёт все плейлисты со всеми
     // треками, и перегон этого в JS на каждом обновлении подвешивал окно

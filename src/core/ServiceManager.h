@@ -30,6 +30,8 @@ public:
 
     Library* library() const { return m_library; }
     Recommender* recommender() const { return m_recommender; }
+    // миксы для телефона: свой экземпляр, его готовность не открывает плейлист в окне
+    MorphMixes* phoneMixes() const { return m_phoneMixes; }
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -56,6 +58,11 @@ public slots:
     // недавно игравшее на всех площадках, для ряда на главной
     QVariantList recentTracks(int limit = 16) const { return m_recommender->history().recent(limit); }
     void resolve(const QString& serviceName, const QString& trackId);
+    // Трек для телефона: ответ в phoneStreamReady или phoneStreamFailed. Окно
+    // про него не слышит, иначе текущий трек в окне начался бы заново
+    void fetchForPhone(const QString& serviceName, const QString& trackId);
+    // прослушивание на телефоне учит рекомендации так же, как в окне
+    void phoneListen(const QVariantMap& track, double playedSeconds, double lengthSeconds, bool completed);
     void prefetch(const QString& serviceName, const QString& trackId);
     void otherVersion(const QVariantMap& track);
     QVariantMap fallbackSource(const QVariantMap& track) const;
@@ -119,6 +126,8 @@ signals:
     void artistReady(const QVariantMap& artist);
     // basis: contents (по трекам плейлиста), title (по названию) или taste (по вкусу)
     void playlistSuggestionsReady(const QString& name, const QVariantList& tracks, const QString& basis);
+    void phoneStreamReady(const QString& trackId, const QString& streamUrl);
+    void phoneStreamFailed(const QString& trackId);
 
 private:
     void attach(BaseService* service);
@@ -126,6 +135,7 @@ private:
     static QVariantMap wantedFrom(const QVariantMap& track);
     BaseService* service(const QString& name) const;
     void directStreamFailed(const QString& trackId);
+    void deliverStream(const QString& trackId, const QString& url);
     void linkNext();
     bool linkYandex();
     bool syncSoundCloud();
@@ -139,6 +149,9 @@ private:
     QSet<QString> m_prefetching;
     // включены напрямую с SoundCloud или YouTube, а не как замена
     QSet<QString> m_direct;
+    // кто ждёт поток: окно, телефон или оба
+    QSet<QString> m_windowWanted;
+    QSet<QString> m_phoneWanted;
     QTimer* m_linkTimer;
     int m_linksThisRun = 0;
     bool m_syncToYandex = false;
@@ -150,6 +163,7 @@ private:
     Library* m_library;
     Recommender* m_recommender;
     MorphMixes* m_mixes;
+    MorphMixes* m_phoneMixes;
     PlaylistSync* m_playlistSync;
     PinterestCovers* m_covers;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id

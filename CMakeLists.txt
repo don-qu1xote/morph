@@ -86,6 +86,9 @@ add_library(morph_core STATIC
     src/server/SubsonicBackend.h
     src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp
     src/server/SubsonicApi.h src/server/SubsonicApi.cpp
+    src/server/ServerAudio.h src/server/ServerAudio.cpp
+    src/server/PhoneMixes.h src/server/PhoneMixes.cpp
+    src/server/MorphBackend.h src/server/MorphBackend.cpp
 )
 
 if(APPLE)

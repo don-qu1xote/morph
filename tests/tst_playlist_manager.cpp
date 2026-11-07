@@ -161,6 +161,23 @@ private slots:
         QVERIFY(pm.playlistsWith(track("9")).isEmpty());
     }
 
+    // правки с телефона приходят составом целиком
+    void wholeTrackListIsReplacedWithoutRepeats() {
+        QJsonObject data;
+        PlaylistManager pm(&data);
+        pm.createPlaylistWithTracks("Night", "", {track("1"), track("2")});
+        QSignalSpy changed(&pm, &PlaylistManager::playlistsChanged);
+
+        QVariantMap again{{"id", "s9"}, {"service", "SoundCloud"}, {"title", "title 3"}};
+        QVERIFY(pm.setPlaylistTracks("Night", {track("3"), track("1"), again, track("1")}));
+        QStringList ids;
+        for (const QVariant& t : pm.getPlaylists()["Night"].toMap()["tracks"].toList())
+            ids << t.toMap()["id"].toString();
+        QCOMPARE(ids, QStringList({"3", "1"}));
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!pm.setPlaylistTracks("Nope", {track("1")}));
+    }
+
     void mergeTakesServiceAsSourceOfTruth() {
         QJsonObject data;
         QJsonArray likes;

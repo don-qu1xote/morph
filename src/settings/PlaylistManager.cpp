@@ -228,6 +228,27 @@ bool PlaylistManager::sameSong(const QVariantMap& a, const QVariantMap& b) {
     return !key.endsWith('|') && key == TrackMatch::songKey(b);
 }
 
+bool PlaylistManager::setPlaylistTracks(const QString& playlistName, const QVariantList& tracks) {
+    QJsonObject playlists = (*m_data)["playlists"].toObject();
+    if (!playlists.contains(playlistName)) return false;
+    QJsonArray kept;
+    QVariantList seen;
+    for (const QVariant& t : tracks) {
+        QVariantMap track = t.toMap();
+        bool repeat =
+            std::any_of(seen.cbegin(), seen.cend(), [&](const QVariant& s) { return sameSong(s.toMap(), track); });
+        if (repeat) continue;
+        seen.append(track);
+        kept.append(QJsonObject::fromVariantMap(track));
+    }
+    QJsonObject playlistData = playlists[playlistName].toObject();
+    playlistData["tracks"] = kept;
+    playlists[playlistName] = playlistData;
+    (*m_data)["playlists"] = playlists;
+    emit playlistsChanged();
+    return true;
+}
+
 void PlaylistManager::removeFromPlaylist(const QString& playlistName, const QString& trackId) {
     QJsonObject playlists = (*m_data)["playlists"].toObject();
     if (!playlists.contains(playlistName)) return;

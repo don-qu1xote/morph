@@ -176,6 +176,12 @@ void SettingsManager::removeFromPlaylist(const QString& playlistName, const QStr
     save();
 }
 
+bool SettingsManager::setPlaylistTracks(const QString& playlistName, const QVariantList& tracks) {
+    if (!m_playlists->setPlaylistTracks(playlistName, tracks)) return false;
+    save();
+    return true;
+}
+
 QVariantMap SettingsManager::getPlaylists() {
     return m_playlists->getPlaylists();
 }

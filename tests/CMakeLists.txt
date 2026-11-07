@@ -28,3 +28,4 @@ morph_add_test(tst_candidate_filter tst_candidate_filter.cpp support/FakeHttpSer
 morph_add_test(tst_playlist_sync tst_playlist_sync.cpp support/FakeHttpServer.h)
 morph_add_test(tst_pinterest_covers tst_pinterest_covers.cpp support/FakeHttpServer.h)
 morph_add_test(tst_subsonic_server tst_subsonic_server.cpp)
+morph_add_test(tst_phone_server tst_phone_server.cpp support/FakeHttpServer.h support/FakeTools.h)

@@ -50,6 +50,8 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
                 emit fallbackChosen(trackId, source);
             });
     connect(finder, &FallbackFinder::notFound, this, [this](const QString& trackId, const QString& query) {
+        m_windowWanted.remove(trackId);
+        if (m_phoneWanted.remove(trackId)) emit phoneStreamFailed(trackId);
         // про трек, который ещё не включали, молчим: включат, тогда и скажем
         if (!m_prefetching.remove(trackId)) emit errorOccurred("Not found on SoundCloud or YouTube: " + query);
     });
@@ -75,6 +77,8 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
     m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
     m_mixes->setFilter(m_filter);
+    m_phoneMixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
+    m_phoneMixes->setFilter(m_filter);
     m_playlistSync = new PlaylistSync(yandex, m_library, PathProvider::getDataPath() + "/yandex_playlists.json", this);
     m_covers = new PinterestCovers(net, PathProvider::getDataPath() + "/pinterest.json", this);
     connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
@@ -167,7 +171,7 @@ void ServiceManager::attach(BaseService* s) {
                 emit playlistImported(name, coverUrl, withDuration(tracks));
             });
 
-    connect(s, &BaseService::streamUrlReady, this, &ServiceManager::streamUrlReady);
+    connect(s, &BaseService::streamUrlReady, this, &ServiceManager::deliverStream);
     connect(s, &BaseService::bitrateReady, this, &ServiceManager::bitrateReady);
     connect(s, &BaseService::errorOccurred, this, &ServiceManager::errorOccurred);
 }
@@ -363,6 +367,7 @@ void ServiceManager::resolve(const QString& serviceName, const QString& trackId)
         emit streamUrlReady(trackId, cache->getTrackUrl(trackId));
         return;
     }
+    m_windowWanted.insert(trackId);
 
     // строки из импортированного .txt ищутся так же, как убранные из Яндекса
     QString query = YouTubeService::queryFromTrackId(trackId);
@@ -381,6 +386,7 @@ void ServiceManager::prefetch(const QString& serviceName, const QString& trackId
     if (!s || trackId.isEmpty() || cache->isTrackCached(trackId) || s->isTrackCached(trackId)) return;
 
     m_prefetching.insert(trackId);
+    m_windowWanted.insert(trackId);
     QString query = YouTubeService::queryFromTrackId(trackId);
     if (s == youtube && !query.isEmpty()) {
         finder->find(trackId, TrackMatch::fromQuery(query), true);
@@ -389,6 +395,52 @@ void ServiceManager::prefetch(const QString& serviceName, const QString& trackId
     if (s == soundcloud || s == youtube) m_direct.insert(trackId);
     if (s == youtube) youtube->prefetch(trackId);
     else s->resolveStreamUrl(trackId);
+}
+
+void ServiceManager::fetchForPhone(const QString& serviceName, const QString& trackId) {
+    BaseService* s = service(serviceName);
+    if (!s || trackId.isEmpty()) {
+        emit phoneStreamFailed(trackId);
+        return;
+    }
+    if (cache->isTrackCached(trackId) || s->isTrackCached(trackId)) {
+        emit phoneStreamReady(trackId, cache->getTrackUrl(trackId));
+        return;
+    }
+    if (m_phoneWanted.contains(trackId)) return;
+    m_phoneWanted.insert(trackId);
+
+    // как подгрузка заранее: без ошибок в окне, yt-dlp после того, что играет
+    m_prefetching.insert(trackId);
+    QString query = YouTubeService::queryFromTrackId(trackId);
+    if (s == youtube && !query.isEmpty()) {
+        finder->find(trackId, TrackMatch::fromQuery(query), true);
+        return;
+    }
+    if (s == soundcloud || s == youtube) m_direct.insert(trackId);
+    if (s == youtube) youtube->prefetch(trackId);
+    else s->resolveStreamUrl(trackId);
+}
+
+void ServiceManager::deliverStream(const QString& trackId, const QString& url) {
+    bool forPhone = m_phoneWanted.remove(trackId);
+    bool forWindow = m_windowWanted.remove(trackId);
+    if (forPhone) emit phoneStreamReady(trackId, url);
+    if (forWindow || !forPhone) {
+        emit streamUrlReady(trackId, url);
+        return;
+    }
+    // то, что обычно делает подписка на streamUrlReady
+    m_direct.remove(trackId);
+    m_prefetching.remove(trackId);
+}
+
+void ServiceManager::phoneListen(const QVariantMap& track, double playedSeconds, double lengthSeconds, bool completed) {
+    QString trackId = track["id"].toString();
+    if (trackId.isEmpty()) return;
+    m_started.insert(trackId, track);
+    reportListen(track["service"].toString(), trackId, track["album"].toString(), playedSeconds, lengthSeconds,
+                 completed);
 }
 
 // Трек с SoundCloud или YouTube удалили или закрыли. Если песня есть в MAIN,
@@ -532,6 +584,7 @@ void ServiceManager::otherVersion(const QVariantMap& track) {
     if (trackId.isEmpty()) return;
     cache->forgetTrack(trackId);
     m_prefetching.remove(trackId);
+    m_windowWanted.insert(trackId);
     finder->nextVersion(trackId, wantedFrom(track));
 }
 

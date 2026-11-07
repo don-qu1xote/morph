@@ -40,6 +40,9 @@ public:
     // false, если эта песня уже есть в плейлисте, хоть в другой версии
     bool addToPlaylist(const QString& playlistName, const QVariantMap& track);
     void removeFromPlaylist(const QString& playlistName, const QString& trackId);
+    // Состав целиком, в этом порядке: правки с телефона приходят пачкой.
+    // Повторы одной песни отбрасываются, как и при добавлении по одной
+    bool setPlaylistTracks(const QString& playlistName, const QVariantList& tracks);
     QVariantMap getPlaylists();
     // плейлисты, в которых уже есть эта песня
     QStringList playlistsWith(const QVariantMap& track) const;
