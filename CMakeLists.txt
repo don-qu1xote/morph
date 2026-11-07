@@ -82,6 +82,10 @@ add_library(morph_core STATIC
     src/settings/StyleManager.h src/settings/StyleManager.cpp
     src/core/MprisManager.h src/core/MprisManager.cpp
     src/utils/DiscordManager.h src/utils/DiscordManager.cpp
+    src/server/HttpServer.h src/server/HttpServer.cpp
+    src/server/SubsonicBackend.h
+    src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp
+    src/server/SubsonicApi.h src/server/SubsonicApi.cpp
 )
 
 if(APPLE)
