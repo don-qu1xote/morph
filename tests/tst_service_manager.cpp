@@ -1,3 +1,4 @@
+#include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -35,6 +36,9 @@ class TestServiceManager : public QObject {
 private slots:
     void initTestCase() {
         QStandardPaths::setTestModeEnabled(true);
+        // Тесты ждут пустую папку данных, как на CI. Локально в ней копится
+        // всё от прошлых запусков: библиотека, история, кэш треков
+        QDir(PathProvider::getDataPath()).removeRecursively();
         qputenv("MORPH_YANDEX_API", yandexApi.url().toUtf8());
         qputenv("MORPH_SOUNDCLOUD_API", soundcloudApi.url().toUtf8());
         // настоящий yt-dlp тесту не нужен: пустой ответ, как от поиска без результатов

@@ -1,4 +1,5 @@
 #include "ServiceManager.h"
+#include "../utils/BackgroundWriter.h"
 #include "../services/TrackData.h"
 #include "TrackMatch.h"
 #include <QCollator>
@@ -133,6 +134,10 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         }
         mixer->setLostTracks(lost);
     });
+}
+
+ServiceManager::~ServiceManager() {
+    BackgroundWriter::waitForAll();
 }
 
 // Раньше тут было по три одинаковых connect на каждый сигнал, по одному на сервис.

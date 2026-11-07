@@ -27,6 +27,8 @@ class ServiceManager : public QObject {
     Q_OBJECT
 public:
     explicit ServiceManager(NetworkManager* net, CacheManager* cache, QObject* parent = nullptr);
+    // фильтр, ранжирование, обложки и прочее пишут файлы в фоне: дописать до выхода
+    ~ServiceManager() override;
 
     Library* library() const { return m_library; }
     Recommender* recommender() const { return m_recommender; }
