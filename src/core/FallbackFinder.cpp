@@ -1,4 +1,5 @@
 #include "FallbackFinder.h"
+#include "../utils/BackgroundWriter.h"
 #include "TrackMatch.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YandexService.h"
@@ -243,6 +244,7 @@ QString FallbackFinder::candidateKey(const QVariantMap& candidate) {
 }
 
 void FallbackFinder::loadChoices() {
+    BackgroundWriter::waitForAll();
     QFile file(m_choicesPath);
     if (!file.open(QIODevice::ReadOnly)) return;
     QJsonObject saved = QJsonDocument::fromJson(file.readAll()).object();
@@ -255,6 +257,5 @@ void FallbackFinder::saveChoices() const {
     for (auto it = m_choices.cbegin(); it != m_choices.cend(); ++it) {
         saved.insert(it.key(), QJsonObject::fromVariantMap(it.value()));
     }
-    QFile file(m_choicesPath);
-    if (file.open(QIODevice::WriteOnly)) file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
+    BackgroundWriter::write(m_choicesPath, saved);
 }

@@ -1,4 +1,5 @@
 #include "PinterestCovers.h"
+#include "../utils/BackgroundWriter.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -142,6 +143,7 @@ QMap<QString, QByteArray> PinterestCovers::headers() const {
 }
 
 void PinterestCovers::load() {
+    BackgroundWriter::waitForAll();
     QFile file(m_statePath);
     if (!file.open(QIODevice::ReadOnly)) return;
     QJsonObject saved = QJsonDocument::fromJson(file.readAll()).object();
@@ -155,8 +157,5 @@ void PinterestCovers::save() const {
     for (const QString& url : m_used) used.append(url);
     QJsonObject assigned;
     for (auto it = m_assigned.cbegin(); it != m_assigned.cend(); ++it) assigned.insert(it.key(), it.value());
-    QFile file(m_statePath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(QJsonObject{{"used", used}, {"assigned", assigned}}).toJson(QJsonDocument::Compact));
-    }
+    BackgroundWriter::write(m_statePath, QJsonObject{{"used", used}, {"assigned", assigned}});
 }

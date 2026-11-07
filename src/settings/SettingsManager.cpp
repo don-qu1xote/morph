@@ -1,10 +1,14 @@
 #include "SettingsManager.h"
+#include "../utils/BackgroundWriter.h"
 #include "../utils/PathProvider.h"
 #include <QDir>
 #include <QSysInfo>
 
 SettingsManager::SettingsManager(CacheManager* cache, QObject* parent) : QObject(parent), cache(cache) {
     m_path = PathProvider::getDataPath() + "/settings.json";
+    m_saveTimer.setSingleShot(true);
+    m_saveTimer.setInterval(1500);
+    connect(&m_saveTimer, &QTimer::timeout, this, &SettingsManager::flush);
     load();
 
     m_playlists = new PlaylistManager(&m_data, this);
@@ -67,15 +71,23 @@ void SettingsManager::load() {
     }
 }
 
+SettingsManager::~SettingsManager() {
+    flush();
+    BackgroundWriter::waitForAll();
+}
+
+// В settings.json лежат все лайки и плейлисты, это мегабайты. Раньше он
+// целиком переписывался прямо в окне на каждый лайк и каждую смену трека
 void SettingsManager::save() {
-    QString tmpPath = m_path + ".tmp";
-    QFile file(tmpPath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(m_data).toJson());
-        file.close();
-        QFile::remove(m_path);
-        QFile::rename(tmpPath, m_path);
-    }
+    m_dirty = true;
+    if (!m_saveTimer.isActive()) m_saveTimer.start();
+}
+
+void SettingsManager::flush() {
+    m_saveTimer.stop();
+    if (!m_dirty) return;
+    m_dirty = false;
+    BackgroundWriter::write(m_path, m_data);
 }
 
 void SettingsManager::saveSession(const QVariantMap& session) {
@@ -498,4 +510,31 @@ void SettingsManager::setActiveStyleName(const QString& name) {
 
 QString SettingsManager::getActiveStylePath() {
     return m_styles->getActiveStylePath();
+}
+
+QVariantList SettingsManager::playlistSummaries() const {
+    QVariantList out;
+    const QJsonObject playlists = m_data["playlists"].toObject();
+    for (auto it = playlists.begin(); it != playlists.end(); ++it) {
+        QJsonObject p = it.value().toObject();
+        out.append(QVariantMap{
+            {"name", it.key()}, {"coverUrl", p["coverUrl"].toString()}, {"trackCount", p["tracks"].toArray().size()}});
+    }
+    return out;
+}
+
+QStringList SettingsManager::playlistNames() const {
+    return m_data["playlists"].toObject().keys();
+}
+
+bool SettingsManager::hasPlaylist(const QString& name) const {
+    return !name.isEmpty() && m_data["playlists"].toObject().contains(name);
+}
+
+QVariantList SettingsManager::playlistTracks(const QString& name) const {
+    return m_data["playlists"].toObject()[name].toObject()["tracks"].toArray().toVariantList();
+}
+
+QString SettingsManager::playlistCover(const QString& name) const {
+    return m_data["playlists"].toObject()[name].toObject()["coverUrl"].toString();
 }

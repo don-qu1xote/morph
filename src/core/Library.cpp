@@ -1,5 +1,6 @@
 #include "Library.h"
 #include "TrackMatch.h"
+#include "../utils/BackgroundWriter.h"
 #include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
@@ -14,6 +15,10 @@ static const qint64 kRetryLinkSecs = 7 * 24 * 3600;
 
 Library::Library(const QString& path, QObject* parent) : QObject(parent), m_path(path) {
     load();
+}
+
+Library::~Library() {
+    BackgroundWriter::waitForAll();
 }
 
 void Library::syncLikes(const QVariantList& likes) {
@@ -59,6 +64,19 @@ QVariantList Library::tracks() const {
         out.append(track);
     }
     return out;
+}
+
+QVariantMap Library::summary(int covers) const {
+    QVariantList coverUrls;
+    QVariantMap sources;
+    for (const QString& key : m_order) {
+        QVariantMap track = best(m_songs[key]);
+        QString service = track["service"].toString();
+        sources[service] = sources.value(service).toInt() + 1;
+        QString cover = track["coverUrl"].toString();
+        if (coverUrls.size() < covers && !cover.isEmpty()) coverUrls.append(cover);
+    }
+    return {{"count", int(m_order.size())}, {"covers", coverUrls}, {"sources", sources}};
 }
 
 QStringList Library::sourcesOf(const QString& trackId) const {
@@ -191,6 +209,7 @@ QVariantMap Library::slim(const QVariantMap& track) {
 }
 
 void Library::load() {
+    BackgroundWriter::waitForAll();
     QFile file(m_path);
     if (!file.open(QIODevice::ReadOnly)) return;
     QJsonObject saved = QJsonDocument::fromJson(file.readAll()).object();
@@ -222,9 +241,5 @@ void Library::save() const {
     for (auto it = m_mirrored.cbegin(); it != m_mirrored.cend(); ++it)
         mirrored.insert(it.key(), QJsonArray::fromStringList(*it));
 
-    QFile file(m_path);
-    if (file.open(QIODevice::WriteOnly)) {
-        QJsonObject saved{{"links", links}, {"tried", tried}, {"mirrored", mirrored}};
-        file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
-    }
+    BackgroundWriter::write(m_path, QJsonObject{{"links", links}, {"tried", tried}, {"mirrored", mirrored}});
 }

@@ -1,4 +1,5 @@
 #include "PlaylistSync.h"
+#include "../utils/BackgroundWriter.h"
 #include "Library.h"
 #include "TrackMatch.h"
 #include "../services/YandexService.h"
@@ -186,6 +187,7 @@ void PlaylistSync::resolve(const QVariantList& tracks, std::function<void(const 
 }
 
 void PlaylistSync::load() {
+    BackgroundWriter::waitForAll();
     QFile file(m_path);
     if (!file.open(QIODevice::ReadOnly)) return;
     QJsonObject saved = QJsonDocument::fromJson(file.readAll()).object();
@@ -200,8 +202,5 @@ void PlaylistSync::save() const {
     for (auto it = m_kinds.cbegin(); it != m_kinds.cend(); ++it) kinds.insert(it.key(), it.value());
     QJsonObject found;
     for (auto it = m_found.cbegin(); it != m_found.cend(); ++it) found.insert(it.key(), it.value());
-    QFile file(m_path);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(QJsonObject{{"kinds", kinds}, {"found", found}}).toJson(QJsonDocument::Compact));
-    }
+    BackgroundWriter::write(m_path, QJsonObject{{"kinds", kinds}, {"found", found}});
 }

@@ -1,4 +1,5 @@
 #include "CandidateFilter.h"
+#include "../utils/BackgroundWriter.h"
 #include "TrackMatch.h"
 #include "../services/YandexService.h"
 #include <QDateTime>
@@ -120,6 +121,7 @@ QVariantMap CandidateFilter::resolved(const QVariantMap& track, const QString& o
 }
 
 void CandidateFilter::load() {
+    BackgroundWriter::waitForAll();
     QFile file(m_cachePath);
     if (!file.open(QIODevice::ReadOnly)) return;
     QJsonObject saved = QJsonDocument::fromJson(file.readAll()).object();
@@ -147,6 +149,5 @@ void CandidateFilter::save() const {
         }
         saved.insert(key, QJsonObject{{"y", QJsonObject::fromVariantMap(y)}, {"at", at}});
     }
-    QFile file(m_cachePath);
-    if (file.open(QIODevice::WriteOnly)) file.write(QJsonDocument(saved).toJson(QJsonDocument::Compact));
+    BackgroundWriter::write(m_cachePath, saved);
 }

@@ -50,6 +50,7 @@ add_library(morph_core STATIC
     src/utils/PathProvider.h src/utils/PathProvider.cpp
     src/utils/QmlHighlighter.h src/utils/QmlHighlighter.cpp
     src/utils/CacheManager.h src/utils/CacheManager.cpp
+    src/utils/BackgroundWriter.h src/utils/BackgroundWriter.cpp
     src/utils/FileWatcher.h src/utils/FileWatcher.cpp
     src/utils/CryptoUtils.h src/utils/CryptoUtils.cpp
     src/network/NetworkManager.h src/network/NetworkManager.cpp

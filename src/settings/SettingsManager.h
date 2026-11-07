@@ -10,6 +10,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QQuickTextDocument>
+#include <QTimer>
 #include "../utils/CacheManager.h"
 #include "../utils/QmlHighlighter.h"
 #include "PlaylistManager.h"
@@ -21,6 +22,9 @@ class SettingsManager : public QObject {
     Q_OBJECT
 public:
     explicit SettingsManager(CacheManager* cache, QObject* parent = nullptr);
+    ~SettingsManager() override;
+    // записать отложенные правки сейчас: при выходе
+    void flush();
 
     Q_INVOKABLE void attachHighlighter(QObject* textDocument);
 
@@ -45,6 +49,13 @@ public slots:
     bool addToPlaylist(const QString& playlistName, const QVariantMap& track);
     void removeFromPlaylist(const QString& playlistName, const QString& trackId);
     QVariantMap getPlaylists();
+    // Лёгкие запросы для интерфейса. getPlaylists отдаёт все плейлисты со всеми
+    // треками, и перегон этого в JS на каждом обновлении подвешивал окно
+    QVariantList playlistSummaries() const;
+    QStringList playlistNames() const;
+    bool hasPlaylist(const QString& name) const;
+    QVariantList playlistTracks(const QString& name) const;
+    QString playlistCover(const QString& name) const;
     QString uniquePlaylistName(const QString& name) const;
     QString defaultPlaylistName() const;
     QStringList playlistsWith(const QVariantMap& track) const;
@@ -146,6 +157,9 @@ private:
     TokenManager* m_tokens;
     HistoryManager* m_history;
     StyleManager* m_styles;
+    // правки за пару секунд складываются в одну запись, она идёт в фоне
+    QTimer m_saveTimer;
+    bool m_dirty = false;
     void load();
     void save();
 };

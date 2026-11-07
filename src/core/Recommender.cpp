@@ -1,4 +1,5 @@
 #include "Recommender.h"
+#include "../utils/BackgroundWriter.h"
 #include "TrackMatch.h"
 #include <QDateTime>
 #include <QFile>
@@ -29,6 +30,7 @@ Recommender::Recommender(const QString& dataDir, QObject* parent)
     for (const ListenEvent& e : m_history.events()) m_profile.add(e);
     m_songs = m_history.songs();
 
+    BackgroundWriter::waitForAll();
     QFile file(m_rankerPath);
     if (file.open(QIODevice::ReadOnly)) m_ranker.load(file.readAll());
 }
@@ -115,8 +117,7 @@ void Recommender::learn(const ListenEvent& event, const Ranker::Features& x) {
 }
 
 void Recommender::saveRanker() {
-    QFile file(m_rankerPath);
-    if (file.open(QIODevice::WriteOnly)) file.write(m_ranker.save());
+    BackgroundWriter::write(m_rankerPath, m_ranker.save());
     m_unsaved = 0;
 }
 

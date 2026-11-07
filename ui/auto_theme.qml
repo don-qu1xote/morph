@@ -258,8 +258,8 @@ ApplicationWindow {
 
     function refreshPlaylists() {
         playlistsModel.clear()
-        var pls = MorphSettings.getPlaylists()
-        for (var p in pls) playlistsModel.append({ "name": p, "coverUrl": pls[p].coverUrl || "", "trackCount": pls[p].tracks ? pls[p].tracks.length : 0 })
+        var pls = MorphSettings.playlistSummaries()
+        for (var p = 0; p < pls.length; p++) playlistsModel.append(pls[p])
         refreshHomeTiles()
     }
 
@@ -313,9 +313,18 @@ ApplicationWindow {
             repeatOne = session.repeatOne || false
             
             if (session.queue) {
-                fullPlaylistTracks = session.queue
+                var restored = session.queue
+                var restoredIndex = session.index !== undefined ? session.index : -1
+                // свой плейлист берётся из данных целиком: в сессии только кусок вокруг трека
+                if (session.saveLastImport && MorphSettings.hasPlaylist(session.playlist || "")) {
+                    var full = MorphSettings.playlistTracks(session.playlist)
+                    for (var k = 0; k < full.length; k++) {
+                        if (full[k].id === session.track.id) { restored = full; restoredIndex = k; break }
+                    }
+                }
+                fullPlaylistTracks = restored
                 currentPlaylist = session.playlist || ""
-                currentTrackIndex = session.index !== undefined ? session.index : -1
+                currentTrackIndex = restoredIndex
                 saveLastImport = session.saveLastImport !== undefined ? session.saveLastImport : true
                 libraryModel.clear()
                 for (var i = 0; i < fullPlaylistTracks.length; i++) {
@@ -332,18 +341,28 @@ ApplicationWindow {
     }
 
     onClosing: { saveCurrentSession() }
-    onCurrentTrackChanged: saveCurrentSession()
-    onRepeatOneChanged: saveCurrentSession()
+    onCurrentTrackChanged: sessionSaveTimer.restart()
+    onRepeatOneChanged: sessionSaveTimer.restart()
+
+    // трек переключают подряд: сессия пишется, когда всё успокоилось
+    Timer {
+        id: sessionSaveTimer
+        interval: 2000
+        onTriggered: saveCurrentSession()
+    }
 
     function saveCurrentSession() {
+        // в сессию идёт кусок очереди вокруг трека, а не весь MAIN на тысячи треков
+        var from = Math.max(0, currentTrackIndex - 50)
+        var queue = fullPlaylistTracks.slice(from, from + 200)
         MorphSettings.saveSession({
             "track": currentTrack,
             "volume": MorphAudio.volume,
             "position": MorphAudio.position,
             "repeatOne": repeatOne,
-            "queue": fullPlaylistTracks,
+            "queue": queue,
             "playlist": currentPlaylist,
-            "index": currentTrackIndex,
+            "index": currentTrackIndex >= 0 ? currentTrackIndex - from : -1,
             "saveLastImport": saveLastImport,
             "sidebarExpanded": sidebarExpanded
         })
@@ -371,12 +390,14 @@ ApplicationWindow {
         var tiles = []
         if (MorphLibrary.count > 0)
             tiles.push({ "name": "LIKED", "title": "MAIN", "caption": MorphLibrary.count + " songs", "coverUrl": "", "icon": "qrc:/assets/heart.svg" })
-        var pls = MorphSettings.getPlaylists()
+        var summaries = MorphSettings.playlistSummaries()
+        var pls = {}
+        for (var j = 0; j < summaries.length; j++) pls[summaries[j].name] = summaries[j]
         var names = Object.keys(pls)
         var last = names.indexOf(currentPlaylist)
         if (last > 0) { names.splice(last, 1); names.unshift(currentPlaylist) }
         for (var i = 0; i < names.length && tiles.length < 6; i++) {
-            var n = pls[names[i]].tracks ? pls[names[i]].tracks.length : 0
+            var n = pls[names[i]].trackCount
             tiles.push({ "name": names[i], "title": names[i], "caption": n === 1 ? "1 track" : n + " tracks", "coverUrl": pls[names[i]].coverUrl || "" })
         }
         homeTiles = tiles
@@ -388,15 +409,8 @@ ApplicationWindow {
 
     // шапка библиотеки: обложки последних лайков и сколько песен с какой площадки
     function refreshMainInfo() {
-        var tracks = MorphLibrary.tracks()
-        var covers = []
-        var sources = {}
-        for (var i = 0; i < tracks.length; i++) {
-            var s = tracks[i].service || "Yandex"
-            sources[s] = (sources[s] || 0) + 1
-            if (covers.length < 4 && tracks[i].coverUrl) covers.push(tracks[i].coverUrl)
-        }
-        mainInfo = { "covers": covers, "sources": sources }
+        var summary = MorphLibrary.summary(4)
+        mainInfo = { "covers": summary.covers, "sources": summary.sources }
     }
 
     function requestCharts() {
@@ -468,7 +482,7 @@ ApplicationWindow {
     property string suggestionsBasis: ""
     property bool suggestionsLoading: false
     property string suggestionsFor: ""
-    readonly property bool isUserPlaylist: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && MorphSettings.getPlaylists()[currentPlaylist] !== undefined)
+    readonly property bool isUserPlaylist: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && MorphSettings.hasPlaylist(currentPlaylist))
 
     // служебные списки при сохранении называются по-человечески
     function listTitle(name) {
@@ -480,16 +494,15 @@ ApplicationWindow {
     // mode: create, edit или save
     function openPlaylistDialog(mode, tracks, suggestedName) {
         dialogTracks = tracks || []
-        var pls = MorphSettings.getPlaylists()
         var name = MorphSettings.defaultPlaylistName()
         if (mode === "edit") name = currentPlaylist
         else if (suggestedName) name = MorphSettings.uniquePlaylistName(suggestedName)
-        var cover = mode === "edit" && pls[currentPlaylist] ? (pls[currentPlaylist].coverUrl || "") : ""
+        var cover = mode === "edit" ? MorphSettings.playlistCover(currentPlaylist) : ""
         var line = ""
         if (mode === "save") line = dialogTracks.length === 1 ? "1 track will be saved" : dialogTracks.length + " tracks will be saved"
         else if (mode === "create" && dialogTracks.length === 1) line = "Starts with " + dialogTracks[0].title + " by " + dialogTracks[0].artist
         playlistDialog.pinterestReady = MorphServices.hasCovers()
-        playlistDialog.openWith(mode, name, cover, Object.keys(pls), line)
+        playlistDialog.openWith(mode, name, cover, MorphSettings.playlistNames(), line)
     }
 
     function playlistDialogAccepted(name, coverUrl) {
@@ -530,10 +543,9 @@ ApplicationWindow {
 
     function requestSuggestions() {
         if (!isUserPlaylist) return
-        var pls = MorphSettings.getPlaylists()
         suggestionsFor = currentPlaylist
         suggestionsLoading = true
-        MorphServices.playlistSuggestions(currentPlaylist, pls[currentPlaylist].tracks || [])
+        MorphServices.playlistSuggestions(currentPlaylist, MorphSettings.playlistTracks(currentPlaylist))
     }
 
     function addSuggestion(index) {
@@ -580,8 +592,7 @@ ApplicationWindow {
         var isLiked = (name === "LIKED")
         var targetName = isLiked ? "" : name
         
-        var pls = MorphSettings.getPlaylists()
-        var exists = (targetName !== "" && targetName !== "MY_VIBE" && pls[targetName] !== undefined)
+        var exists = (targetName !== "" && targetName !== "MY_VIBE" && MorphSettings.hasPlaylist(targetName))
 
         if (targetName === currentPlaylist && fullPlaylistTracks.length > 0) {
             saveLastImport = exists
@@ -608,8 +619,7 @@ ApplicationWindow {
             }
         }
         else {
-            var pls = MorphSettings.getPlaylists()
-            var pData = pls[name]
+            var pData = MorphSettings.hasPlaylist(name) ? { "tracks": MorphSettings.playlistTracks(name) } : null
             if (pData) {
                 var ts = pData.tracks || (Array.isArray(pData) ? pData : [])
                 for (var i = 0; i < ts.length; i++) {
@@ -1022,8 +1032,7 @@ ApplicationWindow {
                                     librarySubView = "grid"
                                     refreshPlaylists()
                                     
-                                    var pls = MorphSettings.getPlaylists()
-                                    saveLastImport = (currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && pls[currentPlaylist] !== undefined)
+                                    saveLastImport = (currentPlaylist !== "" && currentPlaylist !== "MY_VIBE" && MorphSettings.hasPlaylist(currentPlaylist))
                                 } else {
                                     saveLastImport = true
                                 }
@@ -1178,8 +1187,7 @@ ApplicationWindow {
                                             anchors.fill: parent
                                             source: {
                                                 if (currentPlaylist === "") return ""
-                                                var pls = MorphSettings.getPlaylists()
-                                                var url = (pls[currentPlaylist] && pls[currentPlaylist].coverUrl) ? pls[currentPlaylist].coverUrl : ""
+                                                var url = MorphSettings.playlistCover(currentPlaylist)
                                                 return MorphCache.getCachedCover(url)
                                             }
                                             fillMode: Image.PreserveAspectCrop
@@ -1879,7 +1887,7 @@ ApplicationWindow {
                                                 fontFamily: mainFont.name
                                                 onArrangeChanged: arrangePlaylist()
                                                 onWaveWanted: startPlaylistWave()
-                                                canChangeCover: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && MorphSettings.getPlaylists()[currentPlaylist] !== undefined)
+                                                canChangeCover: (window.playlistsVersion, saveLastImport && currentPlaylist !== "" && MorphSettings.hasPlaylist(currentPlaylist))
                                                 onCoverWanted: newPlaylistCover()
                                                 canSave: !isUserPlaylist && currentPlaylist !== "" && currentPlaylist !== "MY_VIBE"
                                                 onSaveWanted: openPlaylistDialog("save", playlistSource.length > 0 ? playlistSource : fullPlaylistTracks, listTitle(currentPlaylist))
@@ -4154,8 +4162,7 @@ ApplicationWindow {
             
             if (currentView === "library" && currentPlaylist !== "") {
                 libraryModel.clear()
-                var pls = MorphSettings.getPlaylists()
-                var pData = pls[currentPlaylist]
+                var pData = MorphSettings.hasPlaylist(currentPlaylist) ? { "tracks": MorphSettings.playlistTracks(currentPlaylist) } : null
                 if (pData) {
                     var tracks = pData.tracks || (Array.isArray(pData) ? pData : [])
                     var temp = []

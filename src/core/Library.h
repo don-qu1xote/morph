@@ -19,6 +19,8 @@ class Library : public QObject {
 
 public:
     explicit Library(const QString& path, QObject* parent = nullptr);
+    // дописать то, что ещё пишется в фоне: следующий Library прочтёт свежее
+    ~Library() override;
 
     // false для трека, который сервис знает, но не отдаёт
     void setAvailability(std::function<bool(const QVariantMap&)> available) { m_available = std::move(available); }
@@ -28,6 +30,9 @@ public:
     // Треки для экрана MAIN, новые сверху. Каждый это лайкнутая версия, которая
     // играет надёжнее остальных, плюс alsoOn (где ещё есть песня) и songKey
     Q_INVOKABLE QVariantList tracks() const;
+    // для шапки библиотеки: сколько песен, обложки последних и сколько с какой
+    // площадки. Вся библиотека в JS ради трёх чисел подвешивала окно
+    Q_INVOKABLE QVariantMap summary(int covers) const;
     // сервисы, где есть песня с этим треком, начиная с его собственного
     Q_INVOKABLE QStringList sourcesOf(const QString& trackId) const;
 
