@@ -6,17 +6,21 @@
 #include <QStringList>
 #include <QVariantList>
 #include <functional>
+#include <memory>
 
 class CandidateFilter;
 class Library;
+class MusicSpace;
 class Recommender;
 class SoundCloudService;
+class TasteRadio;
 class YandexService;
 
 // Плейлисты, которые собирает сам morph, а не сервис:
 //   On Repeat: что заслушано за месяц;
 //   Rediscover: лайки, которые давно не звучали;
-//   Daily Mix: группы артистов, которых слушаешь вместе, плюс похожее новое;
+//   Daily Mix: группы артистов, которых слушаешь вместе или которые рядом на
+//     карте музыки, плюс похожее новое вокруг центра группы;
 //   Discover Weekly: незнакомые артисты рядом с любимым, раз в неделю;
 //   Release Radar: свежие релизы любимых артистов.
 // Карточки считаются на месте из истории и MAIN. Треки по клику: где нужно
@@ -32,6 +36,12 @@ public:
     // id вида morph:onrepeat; ответ в ready или failed
     void build(const QString& id);
     void setFilter(CandidateFilter* filter) { this->filter = filter; }
+    // Своя модель вкуса: карта сводит в группы похожих артистов и держит микс
+    // вокруг центра группы, радио приносит их соседей по Last.fm
+    void setTaste(std::function<std::shared_ptr<const MusicSpace>()> space, TasteRadio* radio) {
+        m_space = std::move(space);
+        m_radio = radio;
+    }
 
     // Волна по списку треков, например по плейлисту: похожее на три случайных
     // трека из него и пара его собственных. Партии в seededBatch, следующую
@@ -40,9 +50,9 @@ public:
     void nextSeeded();
 
     // Группы артистов для Daily Mix. Артисты рядом, если звучали в одной
-    // сессии (без перерыва в полчаса) или лайкнуты друг за другом. Дальше
-    // распространение меток: каждый берёт метку, у которой больше всего общего
-    // с ним веса, пока метки не перестанут меняться
+    // сессии (без перерыва в полчаса), лайкнуты друг за другом или стоят рядом
+    // на карте музыки. Дальше распространение меток: каждый берёт метку, у
+    // которой больше всего общего с ним веса, пока метки не перестанут меняться
     QList<QStringList> artistGroups() const;
 
     // Что добавить в плейлист. С треками: похожее на несколько из них. Пустой с
@@ -73,6 +83,8 @@ private:
     void buildReleaseRadar();
     // похожее на seeds из Яндекса и SoundCloud, все ответы разом
     void similarTo(const QVariantList& seeds, int soundcloudSeeds, Tracks done);
+    // соседи по Last.fm нескольких треков, уже через отбор кандидатов
+    void tasteNeighbors(const QVariantList& tracks, int count, Tracks done);
     // кандидаты по названию плейлиста
     void byTitle(const QString& name, Tracks done);
 
@@ -85,6 +97,8 @@ private:
     YandexService* yandex;
     SoundCloudService* soundcloud;
     CandidateFilter* filter = nullptr;
+    std::function<std::shared_ptr<const MusicSpace>()> m_space;
+    TasteRadio* m_radio = nullptr;
     QString m_discoverPath;
 
     QVariantList m_seeds;

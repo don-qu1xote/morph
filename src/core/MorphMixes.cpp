@@ -1,7 +1,9 @@
 #include "MorphMixes.h"
 #include "CandidateFilter.h"
 #include "Library.h"
+#include "MusicSpace.h"
 #include "Recommender.h"
+#include "TasteRadio.h"
 #include "TrackMatch.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YandexService.h"
@@ -36,6 +38,18 @@ static const int kReleaseAlbums = 8;
 static const double kMixNewShare = 0.35;
 // артиста, которого ты пропускаешь, в миксы не зовём
 static const double kDislikedArtist = -0.3;
+// Близость на карте связывает любимых артистов, даже если ты их ни разу не
+// слушал подряд: каждому до трёх ближайших из тех же сорока (граф ближайших
+// соседей, как принято для кластеризации по векторам). Вес растёт от нуля у
+// косинуса kSpaceFloor до половины самой сильной связи из истории: личное
+// прослушивание остаётся главным, а карта разводит то, что волна намешала
+static const int kSpaceNeighbors = 3;
+static const double kSpaceFloor = 0.5;
+static const double kSpaceShare = 0.5;
+// новое в Daily Mix дальше от центра группы не берём: это уже другой микс
+static const double kOffCenter = 0.2;
+// соседей по Last.fm на Daily Mix, до отбора
+static const int kMixNeighbors = 20;
 // сколько треков плейлиста берётся в образцы для подбора
 static const int kSuggestSeeds = 3;
 // из скольких найденных по названию плейлистов брать треки
@@ -276,6 +290,31 @@ QList<QStringList> MorphMixes::artistGroups() const {
         together(window, kLikeWeight);
     }
 
+    if (std::shared_ptr<const MusicSpace> space = m_space ? m_space() : nullptr) {
+        double strongest = 1;
+        for (const QHash<QString, double>& row : std::as_const(link)) {
+            for (double w : row) strongest = qMax(strongest, w);
+        }
+        QList<QPair<QString, MusicSpace::Vector>> placed;
+        for (const QString& a : std::as_const(artists)) {
+            if (const MusicSpace::Vector* v = space->artist(a)) placed.append({a, *v});
+        }
+        for (const auto& [a, va] : std::as_const(placed)) {
+            QList<QPair<double, QString>> near;
+            for (const auto& [b, vb] : std::as_const(placed)) {
+                double c = b == a ? 0 : MusicSpace::cosine(va, vb);
+                if (c > kSpaceFloor) near.append({c, b});
+            }
+            // при равенстве порядок любви, как и везде здесь
+            std::stable_sort(near.begin(), near.end(), [](const auto& x, const auto& y) { return x.first > y.first; });
+            for (int i = 0; i < qMin(kSpaceNeighbors, int(near.size())); ++i) {
+                double w = kSpaceShare * strongest * (near[i].first - kSpaceFloor) / (1 - kSpaceFloor);
+                link[a][near[i].second] += w;
+                link[near[i].second][a] += w;
+            }
+        }
+    }
+
     // метки это ключи артистов; обход и выбор при равенстве по порядку любви,
     // чтобы группы не менялись от запуска к запуску
     QHash<QString, QString> label;
@@ -344,20 +383,66 @@ void MorphMixes::buildDailyMix(int index) {
         seedList.append(t);
     }
 
-    QString name = QString("Daily Mix %1").arg(index + 1);
-    similarTo(seedList, 1, [this, own, name](const QVariantList& similar) {
-        QVariantList candidates;
-        QSet<QString> seen;
-        qint64 now = rec->now();
-        for (const QVariant& v : own + similar) {
-            QVariantMap t = v.toMap();
-            QString key = TrackMatch::songKey(t);
-            if (seen.contains(key) || rec->profile().affinityOf(t, now) < kDislikedArtist) continue;
-            seen.insert(key);
-            candidates.append(t);
+    // центр группы на карте: новое вокруг него, а не вокруг всего вкуса
+    std::optional<MusicSpace::Vector> center;
+    if (std::shared_ptr<const MusicSpace> space = m_space ? m_space() : nullptr) {
+        MusicSpace::Vector sum{};
+        int placed = 0;
+        for (const QString& a : groups[index]) {
+            const MusicSpace::Vector* v = space->artist(a);
+            if (!v) continue;
+            for (int d = 0; d < MusicSpace::kDim; ++d) sum[d] += (*v)[d];
+            ++placed;
         }
-        QVariantList tracks = rec->rank(candidates, kMixSize, false, kMixNewShare);
-        emit ready(name, card({}, {}, {}, own)["coverUrl"].toString(), tracks);
+        if (placed > 0) center = MusicSpace::normalized(sum);
+    }
+
+    QString name = QString("Daily Mix %1").arg(index + 1);
+    similarTo(seedList, 1, [this, own, name, center](const QVariantList& similar) {
+        tasteNeighbors(own, kMixNeighbors, [this, own, name, center, similar](const QVariantList& near) {
+            QSet<QString> mine;
+            for (const QVariant& v : own) mine.insert(TrackMatch::songKey(v.toMap()));
+            QVariantList candidates;
+            QSet<QString> seen;
+            qint64 now = rec->now();
+            for (const QVariant& v : own + similar + near) {
+                QVariantMap t = v.toMap();
+                QString key = TrackMatch::songKey(t);
+                if (seen.contains(key) || rec->profile().affinityOf(t, now) < kDislikedArtist) continue;
+                if (center && !mine.contains(key)) {
+                    // трек без места на карте не судим: про него просто ничего не известно
+                    std::optional<MusicSpace::Vector> place = rec->vectorOf(t);
+                    if (place && MusicSpace::cosine(*place, *center) < kOffCenter) continue;
+                }
+                seen.insert(key);
+                candidates.append(t);
+            }
+            QVariantList tracks = rec->rank(candidates, kMixSize, false, kMixNewShare);
+            emit ready(name, card({}, {}, {}, own)["coverUrl"].toString(), tracks);
+        });
+    });
+}
+
+// Соседи по Last.fm трёх треков разных артистов из tracks. Они приходят
+// запросами к YouTube, а отбор кандидатов находит ту же песню в Яндексе
+void MorphMixes::tasteNeighbors(const QVariantList& tracks, int count, Tracks done) {
+    if (!m_radio || !m_radio->isAvailable()) {
+        done({});
+        return;
+    }
+    QList<QVariantMap> seedList;
+    QSet<QString> artists;
+    for (const QVariant& v : tracks) {
+        QVariantMap t = v.toMap();
+        QString artist = TrackMatch::artistKey(t);
+        if (artists.contains(artist)) continue;
+        artists.insert(artist);
+        seedList.append(t);
+        if (seedList.size() >= 3) break;
+    }
+    m_radio->candidates(seedList, count, [this, done](const QVariantList& found) {
+        if (filter && !found.isEmpty()) filter->process(found, "Last.fm", done);
+        else done(found);
     });
 }
 

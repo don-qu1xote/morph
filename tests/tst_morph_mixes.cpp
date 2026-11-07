@@ -5,11 +5,16 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <algorithm>
+#include <memory>
 
+#include "core/KnowledgeBase.h"
 #include "core/Library.h"
 #include "core/MorphMixes.h"
+#include "core/MusicSpace.h"
 #include "core/Recommender.h"
+#include "core/TasteRadio.h"
 #include "core/TrackMatch.h"
+#include "services/LastFmApi.h"
 #include "services/SoundCloudService.h"
 #include "services/YandexService.h"
 #include "support/FakeHttpServer.h"
@@ -22,7 +27,24 @@ class TestMorphMixes : public QObject {
     static constexpr qint64 kStart = 1'800'000'000;
 
     FakeHttpServer api;
+    FakeHttpServer lastfmApi;
     QTemporaryDir dir;
+
+    // компания рэпа и компания трип-хопа, внутри все похожи
+    static std::shared_ptr<const MusicSpace> twoCrowds() {
+        QList<QPair<QString, QList<KnowledgeBase::Neighbor>>> g;
+        for (const QStringList& crowd : {QStringList{"Zamay", "Saluki", "Pyrokinesis", "Markul"},
+                                         QStringList{"Portishead", "Massive Attack", "Tricky", "Björk"}}) {
+            for (const QString& artist : crowd) {
+                QList<KnowledgeBase::Neighbor> n;
+                for (const QString& other : crowd) {
+                    if (other != artist) n.append({other, {}, 0.8, 0});
+                }
+                g.append({artist, n});
+            }
+        }
+        return std::make_shared<const MusicSpace>(MusicSpace::build(g));
+    }
 
     static QVariantMap track(const QString& id, const QString& artist, const QString& title = "Song",
                              const QString& artistId = {}) {
@@ -59,12 +81,24 @@ class TestMorphMixes : public QObject {
         Recommender rec;
         Library library;
         MorphMixes mixes;
+        LastFmApi lastfm{&net};
+        KnowledgeBase knowledge;
+        TasteRadio radio;
         qint64 now = kStart;
 
         explicit World(const QString& dir)
-            : rec(dir), library(dir + "/library.json"), mixes(&rec, &library, &yandex, &soundcloud, dir) {
+            : rec(dir), library(dir + "/library.json"), mixes(&rec, &library, &yandex, &soundcloud, dir),
+              knowledge(&lastfm, dir + "/knowledge.db"), radio(&knowledge, &rec) {
             yandex.setToken("token");
             rec.setClock([this] { return now; });
+        }
+
+        // своя модель вкуса включена: карта и Last.fm
+        void taste(const std::shared_ptr<const MusicSpace>& space) {
+            lastfm.setKey("key");
+            rec.setVectors([space](const QVariantMap& t) { return space->song(t, {}); });
+            radio.setSpace([space]() { return space; });
+            mixes.setTaste([space]() { return space; }, &radio);
         }
 
         void likes(const QVariantList& tracks) {
@@ -105,11 +139,15 @@ class TestMorphMixes : public QObject {
     }
 
 private slots:
-    void initTestCase() { qputenv("MORPH_YANDEX_API", api.url().toUtf8()); }
+    void initTestCase() {
+        qputenv("MORPH_YANDEX_API", api.url().toUtf8());
+        qputenv("MORPH_LASTFM_API", (lastfmApi.url() + "/2.0/").toUtf8());
+    }
 
     void init() {
         api.reset();
-        for (const QString& f : {"listening.jsonl", "ranker.json", "library.json", "discover.json"})
+        lastfmApi.reset();
+        for (const QString& f : {"listening.jsonl", "ranker.json", "library.json", "discover.json", "knowledge.db"})
             QFile::remove(dir.filePath(f));
     }
 
@@ -170,6 +208,70 @@ private slots:
             QString phase = w.rec.profile().name(g.first()).section(' ', 0, 0);
             for (const QString& k : g) QVERIFY(w.rec.profile().name(k).startsWith(phase));
         }
+    }
+
+    // Лайки вперемешку и ни одной сессии: по истории рэп и трип-хоп не
+    // разделить, а карта разводит их по разным миксам
+    void mapSplitsWhatLikesMixed() {
+        World w(dir.path());
+        const QStringList order{"Zamay",       "Portishead", "Saluki", "Massive Attack",
+                                "Pyrokinesis", "Tricky",     "Markul", "Björk"};
+        QVariantList liked;
+        for (int round = 0; round < 2; ++round) {
+            for (const QString& a : order)
+                liked.append(track(a + QString::number(round), a, "T" + QString::number(round)));
+        }
+        w.likes(liked);
+        const QStringList rap{"Zamay", "Saluki", "Pyrokinesis", "Markul"};
+        auto pure = [&](const QList<QStringList>& groups) {
+            for (const QStringList& g : groups) {
+                bool first = rap.contains(w.rec.profile().name(g.first()));
+                for (const QString& k : g) {
+                    if (rap.contains(w.rec.profile().name(k)) != first) return false;
+                }
+            }
+            return !groups.isEmpty();
+        };
+        QVERIFY(!pure(w.mixes.artistGroups()));
+
+        w.taste(twoCrowds());
+        QList<QStringList> groups = w.mixes.artistGroups();
+        QCOMPARE(groups.size(), 2);
+        QVERIFY(pure(groups));
+    }
+
+    // Daily Mix рэпа: соседи по Last.fm из той же компании приходят, а трип-хоп
+    // отсеивается, хоть Яндекс и Last.fm и считают его похожим
+    void dailyMixKeepsToItsCenter() {
+        World w(dir.path());
+        QVariantList liked;
+        for (int round = 0; round < 3; ++round) {
+            for (const QString& a : {"Zamay", "Saluki", "Pyrokinesis"})
+                liked.append(track(a + QString::number(round), a, "T" + QString::number(round)));
+        }
+        liked.append(track("p", "Portishead", "Glory Box"));
+        liked.append(track("m", "Massive Attack", "Teardrop"));
+        w.likes(liked);
+        w.taste(twoCrowds());
+        for (const QVariant& v : liked) {
+            api.on("GET", "/tracks/" + v.toMap()["id"].toString() + "/similar", [](const HttpRequest&) {
+                return jsonResult(QJsonObject{
+                    {"similarTracks", QJsonArray{yandexJson(71, "Tricky", "Overcome"), yandexJson(72, "Fresh 1")}}});
+            });
+        }
+        lastfmApi.on("GET", "/2.0/", [](const HttpRequest&) {
+            QJsonArray tracks{
+                QJsonObject{{"name", "Roads"}, {"match", 0.9}, {"artist", QJsonObject{{"name", "Portishead"}}}},
+                QJsonObject{{"name", "Серпантин"}, {"match", 0.8}, {"artist", QJsonObject{{"name", "Markul"}}}}};
+            return jsonBody({{"similartracks", QJsonObject{{"track", tracks}}}});
+        });
+
+        QStringList names = artists(w.build("morph:daily1"));
+        QVERIFY2(names.contains("Markul"), qPrintable(names.join(", ")));
+        QVERIFY(names.contains("Fresh 1"));
+        QVERIFY(!names.contains("Tricky"));
+        QVERIFY(!names.contains("Portishead"));
+        QVERIFY(!lastfmApi.requestsTo("/2.0/").isEmpty());
     }
 
     // в миксе своё и похожее новое, примерно треть новых

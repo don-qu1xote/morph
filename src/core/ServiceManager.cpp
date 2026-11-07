@@ -123,6 +123,7 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_radio = new TasteRadio(m_knowledge, m_recommender, this);
     m_radio->setSpace([this]() { return m_space; });
     mixer->setTasteRadio(m_radio);
+    m_mixes->setTaste([this]() { return m_space; }, m_radio);
     // то, что уже лежит в базе, складывается в пространство сразу после старта
     if (m_knowledge->size() > 0) QTimer::singleShot(1000, this, &ServiceManager::rebuildSpace);
     connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
