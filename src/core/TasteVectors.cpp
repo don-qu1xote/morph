@@ -51,13 +51,18 @@ double TasteVectors::sessionWeight(const ListenEvent& event) {
 
 void TasteVectors::rebuild(const QList<ListenEvent>& events, const QVariantList& likes, const VectorOf& vectorOf) {
     *this = TasteVectors();
+    setLikes(likes, vectorOf);
+    for (const ListenEvent& e : events) add(e, vectorOf(e.track));
+}
+
+void TasteVectors::setLikes(const QVariantList& likes, const VectorOf& vectorOf) {
+    m_likes.fill(0);
     for (const QVariant& t : likes) {
         std::optional<Vector> v = vectorOf(t.toMap());
         if (!v) continue;
         for (int d = 0; d < MusicSpace::kDim; ++d) m_likes[d] += (*v)[d];
         m_hasLong = true;
     }
-    for (const ListenEvent& e : events) add(e, vectorOf(e.track));
 }
 
 void TasteVectors::add(const ListenEvent& event, const std::optional<Vector>& v) {

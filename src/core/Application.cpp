@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QTimer>
 #include "utils/PathProvider.h"
+#include "utils/StallWatch.h"
 #include "services/TrackData.h"
 
 #ifdef Q_OS_WIN
@@ -33,7 +34,10 @@ Application::Application(QObject *parent) : QObject(parent) {
             [this](const QString& msg) { pendingNotifications.append(msg); });
 
     engine = new QQmlApplicationEngine(this);
-    core = new MorphCore(this);
+    {
+        StallWatch::Scope scope("load data");
+        core = new MorphCore(this);
+    }
     net = core->net();
     cache = core->cache();
     settings = core->settings();
@@ -93,6 +97,8 @@ void Application::bindContextProperties() {
 }
 
 void Application::start() {
+    // паузы окна и сам старт пишутся в stalls.log рядом с данными
+    new StallWatch(PathProvider::getDataPath() + "/stalls.log", this);
     connect(engine, &QQmlApplicationEngine::objectCreated, this, [this](QObject *obj, const QUrl &objUrl) {
         if (!obj && objUrl == QUrl::fromLocalFile(settings->getActiveStylePath())) {
             qCritical() << "MORPH_ERROR: Could not load QML file!" << objUrl;
@@ -113,7 +119,10 @@ void Application::start() {
         }
     });
 
-    engine->load(QUrl::fromLocalFile(settings->getActiveStylePath()));
+    {
+        StallWatch::Scope scope("load interface");
+        engine->load(QUrl::fromLocalFile(settings->getActiveStylePath()));
+    }
 }
 
 void Application::reload() {

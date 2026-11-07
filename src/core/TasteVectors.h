@@ -24,6 +24,8 @@ public:
 
     // заново по истории и лайкам: когда пространство пересобрано и векторы песен другие
     void rebuild(const QList<ListenEvent>& events, const QVariantList& likes, const VectorOf& vectorOf);
+    // лайки это отдельное слагаемое: при новом лайке история не пересчитывается
+    void setLikes(const QVariantList& likes, const VectorOf& vectorOf);
     // время событий в секундах, как в ListenEvent
     void add(const ListenEvent& event, const std::optional<Vector>& v);
 

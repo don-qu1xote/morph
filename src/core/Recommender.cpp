@@ -1,6 +1,7 @@
 #include "Recommender.h"
 #include "../utils/BackgroundWriter.h"
 #include "TrackMatch.h"
+#include "../utils/StallWatch.h"
 #include <QDateTime>
 #include <QFile>
 #include <algorithm>
@@ -51,7 +52,31 @@ void Recommender::setLikes(const QVariantList& likes) {
     m_liked.clear();
     for (const QVariant& t : likes) m_liked.insert(TrackMatch::songKey(t.toMap()));
     m_likes = likes;
-    if (m_vectorOf) m_taste.rebuild(m_history.events(), m_likes, [this](const QVariantMap& t) { return vectorOf(t); });
+    if (m_vectorOf) m_taste.setLikes(m_likes, [this](const QVariantMap& t) { return vectorOf(t); });
+}
+
+Recommender::PreparedTaste Recommender::prepareTaste(const TasteJob& job, const TasteVectors::VectorOf& vectorOf) {
+    PreparedTaste out;
+    auto cached = [&out, &vectorOf](const QVariantMap& t) {
+        QString key = TrackMatch::songKey(t);
+        auto it = out.vectors.constFind(key);
+        if (it != out.vectors.cend()) return it.value();
+        std::optional<MusicSpace::Vector> v = vectorOf(t);
+        out.vectors.insert(key, v);
+        return v;
+    };
+    out.taste.rebuild(job.events, job.likes, cached);
+    out.events = int(job.events.size());
+    return out;
+}
+
+void Recommender::applyTaste(PreparedTaste prepared, TasteVectors::VectorOf vectorOf) {
+    m_vectorOf = std::move(vectorOf);
+    m_vectors = std::move(prepared.vectors);
+    m_taste = prepared.taste;
+    const QList<ListenEvent>& events = m_history.events();
+    for (int i = prepared.events; i < events.size(); ++i) m_taste.add(events[i], this->vectorOf(events[i].track));
+    m_taste.setLikes(m_likes, [this](const QVariantMap& t) { return this->vectorOf(t); });
 }
 
 void Recommender::setVectors(TasteVectors::VectorOf vectorOf) {
@@ -252,6 +277,7 @@ Ranker::Features Recommender::features(const QVariantMap& track, const std::opti
 }
 
 QVariantList Recommender::rank(const QVariantList& candidates, int count, bool explore, double newShare) {
+    StallWatch::Scope scope("rank");
     double share = newShare >= 0 ? newShare : m_newShare;
     struct Scored {
         QVariantMap track;

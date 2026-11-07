@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QTimer>
+#include "utils/StallWatch.h"
 #include <QUrl>
 
 // связи с Яндексом ищутся в фоне: столько за запуск и с такой паузой
@@ -76,7 +77,10 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(m_linkTimer, &QTimer::timeout, this, &ServiceManager::linkNext);
     connect(m_library, &Library::changed, m_linkTimer, qOverload<>(&QTimer::start));
 
-    m_recommender = new Recommender(PathProvider::getDataPath(), this);
+    {
+        StallWatch::Scope scope("load history");
+        m_recommender = new Recommender(PathProvider::getDataPath(), this);
+    }
     connect(m_library, &Library::changed, m_recommender, [this]() { m_recommender->setLikes(m_library->tracks()); });
     m_mixes = new MorphMixes(m_recommender, m_library, yandex, soundcloud, PathProvider::getDataPath(), this);
     m_mixes->setFilter(m_filter);
@@ -115,7 +119,7 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     // Пространство пересобирается в фоне не чаще раза в 15 секунд, пока база
     // узнаёт новое. Ждать тишины нельзя: при потоке ответов её может не быть
     // вовсе, и карта не появилась бы никогда
-    m_spaceBuild = new QFutureWatcher<MusicSpace>(this);
+    m_spaceBuild = new QFutureWatcher<SpaceBuild>(this);
     m_spaceTimer = new QTimer(this);
     m_spaceTimer->setSingleShot(true);
     m_spaceTimer->setInterval(15000);
@@ -123,14 +127,18 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         if (!m_spaceTimer->isActive()) m_spaceTimer->start();
     });
     connect(m_spaceTimer, &QTimer::timeout, this, &ServiceManager::rebuildSpace);
-    connect(m_spaceBuild, &QFutureWatcher<MusicSpace>::finished, this, [this]() {
-        auto space = std::make_shared<const MusicSpace>(m_spaceBuild->result());
-        m_spaceEmpty = space->isEmpty();
+    connect(m_spaceBuild, &QFutureWatcher<SpaceBuild>::finished, this, [this]() {
+        StallWatch::Scope scope("taste apply");
+        SpaceBuild built = m_spaceBuild->result();
+        m_spaceEmpty = !built.space || built.space->isEmpty();
         if (m_spaceEmpty) return;
-        m_space = space;
+        m_space = built.space;
         KnowledgeBase* knowledge = m_knowledge;
-        m_recommender->setVectors(
-            [space, knowledge](const QVariantMap& t) { return space->song(t, knowledge->knownSimilarTracks(t)); });
+        std::shared_ptr<const MusicSpace> space = built.space;
+        // песни, которых не было в истории, считаются уже здесь, по одной и сразу
+        m_recommender->applyTaste(std::move(built.taste), [space, knowledge](const QVariantMap& t) {
+            return space->song(t, knowledge->knownSimilarTracks(t));
+        });
     });
     m_warmTimer = new QTimer(this);
     m_warmTimer->setSingleShot(true);
@@ -763,14 +771,27 @@ void ServiceManager::rebuildSpace() {
         m_spaceTimer->start();
         return;
     }
-    // копия графа уходит в поток, окно дальше не ждёт
+    // Копии графа, базы и истории уходят в поток: там пространство и вкус по
+    // всей истории, окно дальше не ждёт. Копии общие с оригиналами, пока те
+    // не поменяются, так что снимок почти ничего не стоит
     auto graph = m_knowledge->allSimilarArtists();
-    m_spaceBuild->setFuture(QtConcurrent::run([graph]() { return MusicSpace::build(graph); }));
+    KnowledgeBase::Snapshot known = m_knowledge->snapshot();
+    Recommender::TasteJob job = m_recommender->tasteJob();
+    m_spaceBuild->setFuture(QtConcurrent::run([graph, known, job]() {
+        SpaceBuild built;
+        built.space = std::make_shared<const MusicSpace>(MusicSpace::build(graph));
+        if (built.space->isEmpty()) return built;
+        std::shared_ptr<const MusicSpace> space = built.space;
+        built.taste = Recommender::prepareTaste(
+            job, [space, &known](const QVariantMap& t) { return space->song(t, known.similarTracks(t)); });
+        return built;
+    }));
 }
 
 // Похожие для любимых артистов: из них и складывается пространство. Сначала
 // те, кого больше любишь по профилю, потом самые частые в MAIN
 void ServiceManager::warmKnowledge() {
+    StallWatch::Scope scope("warm knowledge");
     QStringList names;
     for (const auto& [key, score] : m_recommender->profile().top(150, m_recommender->now())) {
         QString name = m_recommender->profile().name(key);

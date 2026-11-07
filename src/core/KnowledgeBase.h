@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <functional>
+#include <memory>
 
 class LastFmApi;
 
@@ -44,6 +45,19 @@ public:
     // все ответы про похожих артистов: имя артиста и его соседи
     QList<QPair<QString, QList<Neighbor>>> allSimilarArtists() const;
     int size() const { return int(m_facts.size()); }
+
+    // Снимок всего, что известно сейчас, для фонового потока. Копия общая с
+    // базой, пока сюда не придёт новое, а читать её можно из любого потока
+    class Snapshot {
+    public:
+        QList<Neighbor> similarTracks(const QVariantMap& track) const;
+
+    private:
+        friend class KnowledgeBase;
+        struct Facts;
+        std::shared_ptr<const Facts> m_facts;
+    };
+    Snapshot snapshot() const;
 
     // По очереди узнать похожих для этих артистов: из них складывается
     // пространство вкуса. Уже известные пропускаются

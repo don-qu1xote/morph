@@ -187,7 +187,12 @@ private:
     SoundLibrary* m_sounds;
     std::shared_ptr<const MusicSpace> m_space;
     TasteRadio* m_radio;
-    QFutureWatcher<MusicSpace>* m_spaceBuild;
+    // пространство и вкус по нему, оба посчитаны в фоне
+    struct SpaceBuild {
+        std::shared_ptr<const MusicSpace> space;
+        Recommender::PreparedTaste taste;
+    };
+    QFutureWatcher<SpaceBuild>* m_spaceBuild;
     QTimer* m_spaceTimer;
     QTimer* m_warmTimer;
     QTimer* m_warmRetry;

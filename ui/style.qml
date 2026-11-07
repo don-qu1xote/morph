@@ -318,13 +318,13 @@ ApplicationWindow {
     function preResolveNext() {
         if (currentTrackIndex < 0) return
         var model = currentView === "search" ? (searchModel.count > 0 ? searchModel : historyModel) : libraryModel
-        if (currentTrackIndex + 1 < model.count) {
-            var nextTrack = model.get(currentTrackIndex + 1)
-            if (!nextTrack || !nextTrack.id) return
+        // Два вперёд: трек с YouTube ищется yt-dlp секунды, и если пролистать
+        // следующий, за ним уже ждёт готовый, а не новый запуск
+        for (var ahead = 1; ahead <= 2 && currentTrackIndex + ahead < model.count; ahead++) {
+            var nextTrack = model.get(currentTrackIndex + ahead)
+            if (!nextTrack || !nextTrack.id) continue
             var service = nextTrack.service || (nextTrack.coverUrl && nextTrack.coverUrl.indexOf("yandex") !== -1 ? "Yandex" : "SoundCloud")
-            if (!streamUrlCache[nextTrack.id]) {
-                MorphServices.prefetch(service, nextTrack.id)
-            }
+            if (!streamUrlCache[nextTrack.id]) MorphServices.prefetch(service, nextTrack.id)
         }
     }
 

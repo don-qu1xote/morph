@@ -173,6 +173,47 @@ private slots:
         QCOMPARE(taste.sessionLength(now + 600 + 31 * 60), 0);
     }
 
+    // Вкус, посчитанный в фоне по снимку истории, такой же, как посчитанный
+    // сразу. То, что пришло за время расчёта (прослушивание и лайк),
+    // досчитывается при применении
+    void tasteFromBackgroundIsTheSame() {
+        QTemporaryDir one;
+        QTemporaryDir two;
+        MusicSpace space = MusicSpace::build(twoCrowds());
+        auto vectorOf = [&space](const QVariantMap& t) { return space.song(t, {}); };
+        qint64 now = 1'800'000'000;
+        auto clock = [&now]() { return now; };
+
+        Recommender direct(one.path());
+        Recommender background(two.path());
+        for (Recommender* rec : {&direct, &background}) {
+            rec->setClock(clock);
+            rec->setLikes({track("Zamay", "1")});
+            rec->listened(track("Saluki", "2"), 200, 200, true);
+            rec->listened(track("Portishead", "3"), 10, 200, false);
+        }
+        direct.setVectors(vectorOf);
+        Recommender::TasteJob job = background.tasteJob();
+        Recommender::PreparedTaste prepared = Recommender::prepareTaste(job, vectorOf);
+
+        // пока шёл расчёт
+        now += 60;
+        for (Recommender* rec : {&direct, &background}) {
+            rec->listened(track("Massive Attack", "4"), 200, 200, true);
+            rec->setLikes({track("Zamay", "1"), track("Björk", "5")});
+        }
+        background.applyTaste(std::move(prepared), vectorOf);
+
+        for (auto part : {&TasteVectors::longTerm, &TasteVectors::session, &TasteVectors::current}) {
+            std::optional<MusicSpace::Vector> a = (direct.taste().*part)(now);
+            std::optional<MusicSpace::Vector> b = (background.taste().*part)(now);
+            QVERIFY(a.has_value() && b.has_value());
+            QVERIFY(qAbs(MusicSpace::cosine(a.value_or(MusicSpace::Vector{}), b.value_or(MusicSpace::Vector{})) - 1) <
+                    1e-5);
+        }
+        QCOMPARE(background.taste().sessionLength(now), direct.taste().sessionLength(now));
+    }
+
     // в ранжировании это признаки cosU, cosS, cosL: близкое к вкусу выше
     void rankerPrefersWhatIsCloseToTaste() {
         QTemporaryDir dir;

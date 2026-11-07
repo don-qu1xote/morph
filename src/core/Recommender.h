@@ -50,6 +50,25 @@ public:
     // Где песня в пространстве музыки. Задаётся, когда пространство собрано, и
     // дальше вкус считается в нём: признаки cosU, cosS и cosL в ранжировании
     void setVectors(TasteVectors::VectorOf vectorOf);
+
+    // Вкус по всей истории дорого считать на главном потоке: год прослушиваний
+    // это полсекунды и больше, и окно замирало после каждой пересборки карты.
+    // Поэтому снимок истории уходит в фон, там считаются векторы всех песен и
+    // вкус, а сюда возвращается готовое
+    struct TasteJob {
+        QList<ListenEvent> events;
+        QVariantList likes;
+    };
+    struct PreparedTaste {
+        QHash<QString, std::optional<MusicSpace::Vector>> vectors;
+        TasteVectors taste;
+        // сколько событий истории учтено
+        int events = 0;
+    };
+    TasteJob tasteJob() const { return {m_history.events(), m_likes}; }
+    static PreparedTaste prepareTaste(const TasteJob& job, const TasteVectors::VectorOf& vectorOf);
+    // готовое из фона; события и лайки, пришедшие за время расчёта, досчитываются здесь
+    void applyTaste(PreparedTaste prepared, TasteVectors::VectorOf vectorOf);
     std::optional<MusicSpace::Vector> vectorOf(const QVariantMap& track) const;
     const TasteVectors& taste() const { return m_taste; }
 

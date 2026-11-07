@@ -146,6 +146,12 @@ cmake --build build --config Release
 
 ---
 
+## When the window stutters
+
+morph writes `stalls.log` next to its data (`~/Library/Application Support/morph` on macOS, `~/.local/share/morph` on Linux): how long the start took and what took it, and every moment the window did not respond for more than a quarter of a second, with the operations that were running. Send the last lines along with what you were doing.
+
+`make` builds RelWithDebInfo: optimised, with debug symbols. For a debugger session use `make build BUILD_TYPE=Debug`.
+
 ## Configuration
 
 To unlock full functionality, you need to provide your authentication tokens in the **Settings** tab. Changes are saved automatically.

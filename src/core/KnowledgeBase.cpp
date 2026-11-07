@@ -156,6 +156,21 @@ void KnowledgeBase::topTracks(const QString& artist, Done done) {
         std::move(done));
 }
 
+struct KnowledgeBase::Snapshot::Facts {
+    QHash<QString, KnowledgeBase::Fact> all;
+};
+
+KnowledgeBase::Snapshot KnowledgeBase::snapshot() const {
+    Snapshot s;
+    s.m_facts = std::make_shared<const Snapshot::Facts>(Snapshot::Facts{m_facts});
+    return s;
+}
+
+QList<KnowledgeBase::Neighbor> KnowledgeBase::Snapshot::similarTracks(const QVariantMap& track) const {
+    if (!m_facts) return {};
+    return m_facts->all.value(factKey("track", TrackMatch::songKey(track))).items;
+}
+
 QList<KnowledgeBase::Neighbor> KnowledgeBase::knownSimilarTracks(const QVariantMap& track) const {
     return m_facts.value(factKey("track", TrackMatch::songKey(track))).items;
 }

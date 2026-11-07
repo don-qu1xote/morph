@@ -1,7 +1,10 @@
 # Всё, что делается руками больше одного раза. Список целей: make help
 
 BUILD_DIR ?= build
-BUILD_TYPE ?= Debug
+# С оптимизацией и с отладочными символами: в Debug наш код в разы медленнее,
+# и окно подвисало там, где в оптимизированной сборке всё гладко.
+# Для отладки: make build BUILD_TYPE=Debug
+BUILD_TYPE ?= RelWithDebInfo
 JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu)
 UPSTREAM := $(shell cat .upstream)
 DOCKER_IMAGE ?= morph-dev

@@ -90,6 +90,7 @@ add_library(morph_core STATIC
     src/core/TasteRadio.h src/core/TasteRadio.cpp
     src/core/AudioFeatures.h src/core/AudioFeatures.cpp
     src/core/SoundLibrary.h src/core/SoundLibrary.cpp
+    src/utils/StallWatch.h src/utils/StallWatch.cpp
     src/server/HttpServer.h src/server/HttpServer.cpp
     src/server/SubsonicBackend.h
     src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp
