@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
 
@@ -85,6 +86,16 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_covers = new PinterestCovers(net, PathProvider::getDataPath() + "/pinterest.json", this);
     m_lastfm = new LastFmApi(net, this);
     m_knowledge = new KnowledgeBase(m_lastfm, PathProvider::getDataPath() + "/knowledge.db", this);
+    // Звук треков: каждый скачанный в кэш файл разбирается в фоне, а то, что
+    // уже лежит в кэше, через десять секунд после старта, когда окно загрузилось
+    m_sounds = new SoundLibrary(PathProvider::getDataPath() + "/sound.db", this);
+    m_sounds->setDecoder(QStandardPaths::findExecutable("ffmpeg"));
+    if (cache) {
+        connect(cache, &CacheManager::trackCached, m_sounds, [this](const QString&, const QString& path) {
+            m_sounds->enqueue(QFileInfo(path).completeBaseName(), path);
+        });
+        QTimer::singleShot(10000, m_sounds, [this]() { m_sounds->scan(PathProvider::getTrackCachePath()); });
+    }
     connect(m_lastfm, &LastFmApi::keyRejected, this,
             [this]() { emit notice("Last.fm rejected the API key. Check it in Settings"); });
 
@@ -720,6 +731,10 @@ QVariantMap ServiceManager::tasteStatus() const {
             {"length", int(m_lastFmKey.size())},
             {"left", m_knowledge->warmingLeft()},
             {"error", m_lastfm->lastError()}};
+}
+
+QVariantMap ServiceManager::soundStatus() const {
+    return {{"decoder", m_sounds->hasDecoder()}, {"heard", m_sounds->size()}, {"left", m_sounds->pending()}};
 }
 
 void ServiceManager::setLastFmKey(const QString& key) {

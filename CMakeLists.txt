@@ -88,6 +88,8 @@ add_library(morph_core STATIC
     src/core/MusicSpace.h src/core/MusicSpace.cpp
     src/core/TasteVectors.h src/core/TasteVectors.cpp
     src/core/TasteRadio.h src/core/TasteRadio.cpp
+    src/core/AudioFeatures.h src/core/AudioFeatures.cpp
+    src/core/SoundLibrary.h src/core/SoundLibrary.cpp
     src/server/HttpServer.h src/server/HttpServer.cpp
     src/server/SubsonicBackend.h
     src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp
@@ -97,6 +99,11 @@ add_library(morph_core STATIC
     src/server/MorphBackend.h src/server/MorphBackend.cpp
     src/server/PhoneServer.h src/server/PhoneServer.cpp
 )
+
+# Разбор звука это циклы по миллиону отсчётов: без оптимизации он в сорок раз
+# медленнее и в отладочной сборке грел бы мак в фоне. Этот файл всегда с -O2
+set_source_files_properties(src/core/AudioFeatures.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-O2>")
 
 if(APPLE)
     target_sources(morph_core PRIVATE src/core/MacNowPlaying.h src/core/MacNowPlaying.mm)

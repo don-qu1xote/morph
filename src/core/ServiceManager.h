@@ -18,6 +18,7 @@
 #include "FallbackFinder.h"
 #include "KnowledgeBase.h"
 #include "MusicSpace.h"
+#include "SoundLibrary.h"
 #include "TasteRadio.h"
 #include <QFutureWatcher>
 #include <memory>
@@ -45,6 +46,8 @@ public:
     std::shared_ptr<const MusicSpace> space() const { return m_space; }
     // для настроек: сколько ответов Last.fm в базе и сколько артистов в пространстве
     Q_INVOKABLE QVariantMap tasteStatus() const;
+    // сколько треков из кэша уже услышано и сколько ждут; decoder: есть ли ffmpeg
+    Q_INVOKABLE QVariantMap soundStatus() const;
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -181,6 +184,7 @@ private:
     MorphMixes* m_phoneMixes;
     LastFmApi* m_lastfm;
     KnowledgeBase* m_knowledge;
+    SoundLibrary* m_sounds;
     std::shared_ptr<const MusicSpace> m_space;
     TasteRadio* m_radio;
     QFutureWatcher<MusicSpace>* m_spaceBuild;
