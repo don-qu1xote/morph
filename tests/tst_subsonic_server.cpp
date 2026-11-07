@@ -483,6 +483,24 @@ private slots:
         QCOMPARE(songs[0].toObject()["isDir"].toBool(true), false);
     }
 
+    // так Amperfy проверяет адрес перед входом: GET корня без пароля, всё от 400 это отказ
+    void rootAnswersBeforeLogin() {
+        auto fetch = [this](const QString& path) {
+            QNetworkReply* reply =
+                net.get(QNetworkRequest(QUrl(QString("http://127.0.0.1:%1%2").arg(server.port()).arg(path))));
+            QEventLoop loop;
+            connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+            QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+            loop.exec();
+            int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            reply->deleteLater();
+            return status;
+        };
+        QCOMPARE(fetch(""), 200);
+        QCOMPARE(fetch("/"), 200);
+        QCOMPARE(fetch("/server/xml.server.php?action=handshake"), 404);
+    }
+
     void unknownCallsAnswerWithoutBreakingSync() {
         QCOMPARE(call("getPodcasts").first("podcasts").name, QString("podcasts"));
         QCOMPARE(call("getInternetRadioStations").attr("status"), QString("ok"));

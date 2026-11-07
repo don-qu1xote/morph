@@ -218,6 +218,12 @@ void SubsonicApi::saveSeen() const {
 }
 
 void SubsonicApi::handle(const IncomingRequest& request, std::shared_ptr<HttpResponder> responder) {
+    // Amperfy перед входом открывает сам адрес сервера и на 404 отказывает,
+    // не дойдя до API. Корню хватит короткого ответа, как у Navidrome
+    if (request.path == "/" || request.path.isEmpty()) {
+        responder->send(200, "text/plain; charset=UTF-8", "morph");
+        return;
+    }
     if (!request.path.startsWith("/rest/")) {
         responder->send(404, "text/plain", "morph");
         return;
