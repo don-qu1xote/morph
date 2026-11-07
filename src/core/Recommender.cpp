@@ -34,10 +34,12 @@ static const int kTransitionWindow = 4;
 
 Recommender::Recommender(const QString& dataDir, QObject* parent)
     : QObject(parent), m_now([]() { return QDateTime::currentSecsSinceEpoch(); }),
-      m_history(dataDir + "/listening.jsonl"), m_rankerPath(dataDir + "/ranker.json") {
+      m_history(dataDir.isEmpty() ? QString() : dataDir + "/listening.jsonl"),
+      m_rankerPath(dataDir.isEmpty() ? QString() : dataDir + "/ranker.json") {
     for (const ListenEvent& e : m_history.events()) m_profile.add(e);
     m_songs = m_history.songs();
 
+    if (m_rankerPath.isEmpty()) return;
     BackgroundWriter::waitForAll();
     QFile file(m_rankerPath);
     if (file.open(QIODevice::ReadOnly)) m_ranker.load(file.readAll());
@@ -191,7 +193,7 @@ void Recommender::learn(const ListenEvent& event, const Ranker::Features& x) {
 }
 
 void Recommender::saveRanker() {
-    BackgroundWriter::write(m_rankerPath, m_ranker.save());
+    if (!m_rankerPath.isEmpty()) BackgroundWriter::write(m_rankerPath, m_ranker.save());
     m_unsaved = 0;
 }
 

@@ -33,6 +33,8 @@ void ListeningHistory::append(const ListenEvent& event) {
         rewrite();
         return;
     }
+    // без пути история живёт только в памяти: проверка модели
+    if (m_path.isEmpty()) return;
 
     QFile file(m_path);
     if (file.open(QIODevice::Append)) file.write(QJsonDocument(toJson(event)).toJson(QJsonDocument::Compact) + "\n");
@@ -53,6 +55,7 @@ QHash<QString, ListeningHistory::SongStats> ListeningHistory::songs(qint64 since
 }
 
 void ListeningHistory::load() {
+    if (m_path.isEmpty()) return;
     QFile file(m_path);
     if (!file.open(QIODevice::ReadOnly)) return;
     while (!file.atEnd()) {
@@ -82,6 +85,7 @@ QVariantList ListeningHistory::recent(int limit) const {
 }
 
 void ListeningHistory::rewrite() const {
+    if (m_path.isEmpty()) return;
     QFile file(m_path);
     if (!file.open(QIODevice::WriteOnly)) return;
     for (const ListenEvent& e : m_events) file.write(QJsonDocument(toJson(e)).toJson(QJsonDocument::Compact) + "\n");

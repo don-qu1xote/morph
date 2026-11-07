@@ -146,6 +146,10 @@ cmake --build build --config Release
 
 ---
 
+## How well the model knows you
+
+`make eval` replays your listening history through the model: it guesses each play before learning from it, the way it works day to day, and only the last fifth of the history is scored. It prints how well it tells finishes from skips (AUC, 0.5 is a coin toss), how often the track you finished would have made its top 10, skips by source, and the same numbers without the music map and sound, so you can see what they add. It only reads your data, the window can stay open.
+
 ## When the window stutters
 
 morph writes `stalls.log` next to its data (`~/Library/Application Support/morph` on macOS, `~/.local/share/morph` on Linux): how long the start took and what took it, and every moment the window did not respond for more than a quarter of a second, with the operations that were running. Send the last lines along with what you were doing.

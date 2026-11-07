@@ -19,6 +19,7 @@
 class Recommender : public QObject {
     Q_OBJECT
 public:
+    // пустая dataDir: всё в памяти, на диск ничего не пишется (проверка модели)
     explicit Recommender(const QString& dataDir, QObject* parent = nullptr);
     ~Recommender() override;
 
@@ -46,6 +47,8 @@ public:
     // посоветован SoundCloud или YouTube, где бы ни играл
     static bool isExternal(const QVariantMap& track);
     Ranker::Features features(const QVariantMap& track) const;
+    // шанс, что трек дослушают, без разведки: для проверки модели
+    double chance(const QVariantMap& track) { return m_ranker.predict(features(track), false); }
 
     // Где песня в пространстве музыки. Задаётся, когда пространство собрано, и
     // дальше вкус считается в нём: признаки cosU, cosS и cosL в ранжировании

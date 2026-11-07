@@ -6,6 +6,10 @@
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QDateTime>
+#include <QFile>
+#include <QTemporaryDir>
+#include <QTextStream>
 #include <QThread>
 #ifdef Q_OS_UNIX
 #include <QSocketNotifier>
@@ -13,8 +17,15 @@
 #include <unistd.h>
 #endif
 #include "core/Application.h"
+#include "core/Evaluation.h"
+#include "core/KnowledgeBase.h"
 #include "core/MorphCore.h"
+#include "core/MusicSpace.h"
+#include "core/SoundLibrary.h"
+#include "network/NetworkManager.h"
 #include "server/PhoneServer.h"
+#include "services/LastFmApi.h"
+#include "utils/CacheManager.h"
 #include "utils/PathProvider.h"
 
 // Замок и сокет лежат в папке данных, а не во временной: у launchd и у окна
@@ -74,6 +85,74 @@ static int runServer(int argc, char* argv[]) {
     return app.exec();
 }
 
+// morph --eval: насколько модель угадывает тебя, по твоей же истории. Ничего
+// не меняет: история копируется во временную папку, базы только читаются,
+// поэтому окно может быть открыто. Второй прогон без карты и звука показывает,
+// что дают они
+static int runEval(int argc, char* argv[]) {
+    QCoreApplication app(argc, argv);
+    QTextStream out(stdout);
+    const QString data = PathProvider::getDataPath();
+    QTemporaryDir copy;
+    QFile::copy(data + "/listening.jsonl", copy.filePath("listening.jsonl"));
+    ListeningHistory history(copy.filePath("listening.jsonl"));
+    if (history.events().size() < 200) {
+        out << "morph: only " << history.events().size()
+            << " events in the history, come back after a few days of listening\n";
+        return 0;
+    }
+
+    NetworkManager net;
+    LastFmApi lastfm(&net);
+    KnowledgeBase knowledge(&lastfm, data + "/knowledge.db");
+    const MusicSpace space = MusicSpace::build(knowledge.allSimilarArtists());
+    const SoundLibrary sounds(data + "/sound.db");
+
+    Evaluation::Setup full;
+    if (!space.isEmpty()) {
+        full.vectorOf = [&space, &knowledge](const QVariantMap& t) {
+            return space.song(t, knowledge.knownSimilarTracks(t));
+        };
+    }
+    if (sounds.size() > 0) {
+        full.soundOf = [&sounds](const QVariantMap& t) -> std::optional<Recommender::Heard> {
+            QString key = CacheManager::fileKey(t["id"].toString());
+            std::optional<AudioFeatures::Sound> sound = sounds.sound(key);
+            if (!sound) return std::nullopt;
+            return Recommender::Heard{sounds.timbre(key), sound->bpm, sound->energy};
+        };
+    }
+    const Evaluation::Setup base;
+
+    out << "morph model check: " << history.events().size() << " events in the history\n";
+    if (space.isEmpty()) out << "the map is empty: no Last.fm answers yet\n";
+    if (sounds.size() == 0) out << "no tracks heard yet: the sound analysis has not run\n";
+    out << "checking... " << Qt::flush;
+    const Evaluation::Report a = Evaluation::run(history.events(), full);
+    const Evaluation::Report b = Evaluation::run(history.events(), base);
+    out << "done\n\nchecked " << a.scored << " plays since "
+        << QDateTime::fromSecsSinceEpoch(a.testFrom).toString("yyyy-MM-dd")
+        << ", the model learns on everything before\n\n";
+
+    auto row = [&out](const QString& name, const QString& mine, const QString& plain) {
+        out << name.leftJustified(26) << mine.leftJustified(14) << plain << "\n";
+    };
+    auto percent = [](double v) { return QString::number(100 * v, 'f', 1) + " %"; };
+    row("", "your model", "without map and sound");
+    row("skips guessed (AUC)", QString::number(a.auc, 'f', 3), QString::number(b.auc, 'f', 3));
+    row("next track in top 10", percent(a.hitRate), percent(b.hitRate));
+    row("NDCG@10", QString::number(a.ndcg, 'f', 3), QString::number(b.ndcg, 'f', 3));
+
+    out << "\nskips by source in the checked part:\n";
+    for (auto it = a.skips.cbegin(); it != a.skips.cend(); ++it) {
+        out << "  " << (it.key().isEmpty() ? QString("unknown") : it.key()).leftJustified(12)
+            << percent(double(it->first) / it->second) << " of " << it->second << "\n";
+    }
+    out << "\nAUC: 0.5 is a coin toss, 1.0 is perfect. Top 10: the track you finished made the top 10\n"
+           "among itself and 99 songs from your history.\n";
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
 #ifdef Q_OS_MACOS
     // .app из Finder стартует с урезанным PATH, без brew-папок не найдутся
@@ -82,6 +161,7 @@ int main(int argc, char *argv[]) {
 #endif
     for (int i = 1; i < argc; ++i) {
         if (qstrcmp(argv[i], "--server") == 0) return runServer(argc, argv);
+        if (qstrcmp(argv[i], "--eval") == 0) return runEval(argc, argv);
     }
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
     QImageReader::setAllocationLimit(64);

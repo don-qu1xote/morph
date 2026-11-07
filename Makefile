@@ -22,8 +22,10 @@ endif
 
 ifeq ($(shell uname),Darwin)
 RUN := open $(BUILD_DIR)/morph.app
+EVAL := ./$(BUILD_DIR)/morph.app/Contents/MacOS/morph --eval
 else
 RUN := ./$(BUILD_DIR)/morph
+EVAL := ./$(BUILD_DIR)/morph --eval
 endif
 
 .DEFAULT_GOAL := help
@@ -43,6 +45,10 @@ build: configure ## собрать
 .PHONY: run
 run: build ## собрать и запустить
 	$(RUN)
+
+.PHONY: eval
+eval: build ## насколько модель угадывает тебя, по твоей истории
+	$(EVAL)
 
 .PHONY: test
 test: build ## собрать и прогнать тесты
