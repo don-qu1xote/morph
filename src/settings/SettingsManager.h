@@ -70,6 +70,9 @@ public slots:
     QString getPinterestToken();
     void setPinterestBoard(const QString& board);
     QString getPinterestBoard();
+    // ключ API Last.fm для своих рекомендаций
+    void setLastFmKey(const QString& key);
+    QString getLastFmKey();
     // сервер для телефона (Amperfy и другие Subsonic-клиенты)
     void setPhoneServerEnabled(bool enabled);
     bool getPhoneServerEnabled();

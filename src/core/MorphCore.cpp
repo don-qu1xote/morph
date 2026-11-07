@@ -30,6 +30,7 @@ MorphCore::MorphCore(QObject* parent) : QObject(parent) {
         services->setSyncToSoundCloud(settings->getSyncToSoundCloud());
         services->setSyncPlaylists(settings->getSyncPlaylistsToYandex());
         services->setPinterest(settings->getPinterestToken(), settings->getPinterestBoard());
+        services->setLastFmKey(settings->getLastFmKey());
         services->setSmartWaves(settings->getSmartWavesEnabled());
         // morph:new и подобные свои, в сессию Яндекса они не уходят
         QStringList seeds;

@@ -213,6 +213,15 @@ QString SettingsManager::getPinterestToken() {
     return m_tokens->getPinterestToken();
 }
 
+void SettingsManager::setLastFmKey(const QString& key) {
+    m_tokens->setLastFmKey(key);
+    save();
+}
+
+QString SettingsManager::getLastFmKey() {
+    return m_tokens->getLastFmKey();
+}
+
 void SettingsManager::setPinterestBoard(const QString& board) {
     m_data["pinterest_board"] = board.trimmed();
     save();

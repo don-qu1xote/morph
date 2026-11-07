@@ -38,9 +38,9 @@ set(CMAKE_AUTOUIC ON)
 # на маке MPRIS не нужен, а QtDBus в brew-сборке Qt может и не оказаться
 if(APPLE)
     enable_language(OBJCXX)
-    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia Widgets Svg Core5Compat REQUIRED)
+    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia Widgets Svg Core5Compat Sql REQUIRED)
 else()
-    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia DBus Widgets Svg Core5Compat REQUIRED)
+    find_package(Qt6 COMPONENTS Core Quick Qml Network Multimedia DBus Widgets Svg Core5Compat Sql REQUIRED)
 endif()
 find_package(OpenSSL REQUIRED)
 
@@ -83,6 +83,8 @@ add_library(morph_core STATIC
     src/settings/StyleManager.h src/settings/StyleManager.cpp
     src/core/MprisManager.h src/core/MprisManager.cpp
     src/utils/DiscordManager.h src/utils/DiscordManager.cpp
+    src/services/LastFmApi.h src/services/LastFmApi.cpp
+    src/core/KnowledgeBase.h src/core/KnowledgeBase.cpp
     src/server/HttpServer.h src/server/HttpServer.cpp
     src/server/SubsonicBackend.h
     src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp
@@ -112,6 +114,7 @@ target_compile_definitions(morph_core PUBLIC
 
 target_link_libraries(morph_core PUBLIC
     Qt6::Core
+    Qt6::Sql
     Qt6::Quick
     Qt6::Qml
     Qt6::Network

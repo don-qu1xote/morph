@@ -2040,6 +2040,29 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "RECOMMENDATIONS"; caption: "What people listen to together, from Last.fm"; subtextColor: systemTheme.subtext; fontFamily: mainFont.name }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 10
+                                            RowLayout {
+                                                spacing: 8
+                                                Image {
+                                                    source: "qrc:/assets/creation.svg"; Layout.preferredWidth: 16; Layout.preferredHeight: 16
+                                                    sourceSize.width: 32; sourceSize.height: 32
+                                                    layer.enabled: true; layer.effect: ColorOverlay { color: systemTheme.subtext }
+                                                }
+                                                Text { text: "Last.fm API Key"; color: systemTheme.subtext; font.family: mainFont.name; font.pixelSize: 11 }
+                                            }
+                                            TextField {
+                                                id: lastFmKeyField; text: MorphSettings.getLastFmKey(); Layout.fillWidth: true
+                                                placeholderText: "32 letters and digits from last.fm/api/account/create"; placeholderTextColor: systemTheme.subtext
+                                                color: systemTheme.text; font.family: mainFont.name; font.pixelSize: 13; padding: 12; echoMode: TextInput.Password
+                                                background: Rectangle { color: systemTheme.card; radius: 6; border.color: systemTheme.border }
+                                                onEditingFinished: {
+                                                    MorphSettings.setLastFmKey(text)
+                                                    showToast(text.trim() === "" ? "Last.fm key removed" : "Last.fm key saved")
+                                                }
+                                            }
+                                        }
                                         SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "PHONE"; caption: "Amperfy and other Subsonic apps"; subtextColor: systemTheme.subtext; fontFamily: mainFont.name }
                                         PhoneSection {
                                             Layout.fillWidth: true

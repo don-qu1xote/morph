@@ -13,8 +13,10 @@
 #include "../services/YouTubeService.h"
 #include "../services/LyricsService.h"
 #include "../services/PinterestCovers.h"
+#include "../services/LastFmApi.h"
 #include "CandidateFilter.h"
 #include "FallbackFinder.h"
+#include "KnowledgeBase.h"
 #include "Library.h"
 #include "MorphMixes.h"
 #include "PlaylistSync.h"
@@ -34,6 +36,7 @@ public:
     Recommender* recommender() const { return m_recommender; }
     // миксы для телефона: свой экземпляр, его готовность не открывает плейлист в окне
     MorphMixes* phoneMixes() const { return m_phoneMixes; }
+    KnowledgeBase* knowledge() const { return m_knowledge; }
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -86,6 +89,8 @@ public slots:
     void setSyncPlaylists(bool enabled) { m_playlistSync->setEnabled(enabled); }
     // доска Pinterest для обложек: ссылка, имя или id
     void setPinterest(const QString& token, const QString& board) { m_covers->setAccount(token, board); }
+    // ключ API Last.fm: на нём держится знание о похожем для своей модели
+    void setLastFmKey(const QString& key) { m_lastfm->setKey(key); }
     // новая обложка с доски для плейлиста key; пусто, если доска не загружена
     QString newCover(const QString& key) { return m_covers->next(key); }
     bool hasCovers() const { return m_covers->ready(); }
@@ -166,6 +171,8 @@ private:
     Recommender* m_recommender;
     MorphMixes* m_mixes;
     MorphMixes* m_phoneMixes;
+    LastFmApi* m_lastfm;
+    KnowledgeBase* m_knowledge;
     PlaylistSync* m_playlistSync;
     PinterestCovers* m_covers;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id

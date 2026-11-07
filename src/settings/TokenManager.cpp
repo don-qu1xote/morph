@@ -35,6 +35,15 @@ QString TokenManager::getPhonePassword() {
     return CryptoUtils::decrypt((*m_data)["phone_password"].toString());
 }
 
+void TokenManager::setLastFmKey(const QString& key) {
+    (*m_data)["lastfm_key"] = CryptoUtils::encrypt(key.trimmed());
+    emit settingsChanged();
+}
+
+QString TokenManager::getLastFmKey() {
+    return CryptoUtils::decrypt((*m_data)["lastfm_key"].toString());
+}
+
 QString TokenManager::getPinterestToken() {
     return CryptoUtils::decrypt((*m_data)["pinterest_token"].toString());
 }

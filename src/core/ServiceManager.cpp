@@ -82,6 +82,10 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_phoneMixes->setFilter(m_filter);
     m_playlistSync = new PlaylistSync(yandex, m_library, PathProvider::getDataPath() + "/yandex_playlists.json", this);
     m_covers = new PinterestCovers(net, PathProvider::getDataPath() + "/pinterest.json", this);
+    m_lastfm = new LastFmApi(net, this);
+    m_knowledge = new KnowledgeBase(m_lastfm, PathProvider::getDataPath() + "/knowledge.db", this);
+    connect(m_lastfm, &LastFmApi::keyRejected, this,
+            [this]() { emit notice("Last.fm rejected the API key. Check it in Settings"); });
     connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
     // доска пришла позже карточек: раздаём им обложки заново
     connect(m_covers, &PinterestCovers::loaded, this, [this]() {

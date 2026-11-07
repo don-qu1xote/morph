@@ -14,7 +14,7 @@ ARG CLANG_FORMAT_VERSION=18.1.8
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates make python3-pip \
-        qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-svg-dev qt6-5compat-dev \
+        qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-svg-dev qt6-5compat-dev libqt6sql6-sqlite \
         libgl-dev libssl-dev clang-tidy \
  && pip install --no-cache-dir --break-system-packages "clang-format==${CLANG_FORMAT_VERSION}" \
  && rm -rf /var/lib/apt/lists/*
