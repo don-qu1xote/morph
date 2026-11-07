@@ -11,6 +11,7 @@
 #include <optional>
 
 class CandidateFilter;
+class TasteRadio;
 class SoundCloudService;
 class YouTubeService;
 
@@ -27,6 +28,8 @@ public:
     void setEnabled(bool enabled);
     // похожее с SoundCloud и YouTube перед пулом проходит отбор, см. CandidateFilter
     void setFilter(CandidateFilter* filter) { this->filter = filter; }
+    // свои кандидаты из Last.fm: с ними каждый второй чужой слот за ними
+    void setTasteRadio(TasteRadio* radio) { this->radio = radio; }
     // лайки, которые Яндекс больше не отдаёт: играют через фолбэк и служат сидами
     void setLostTracks(const QVariantList& tracks);
     // дослушанный или лайкнутый трек: по нему похожее ищется в первую очередь
@@ -40,8 +43,10 @@ signals:
     void waveReady(const QString& serviceName, const QVariantList& tracks);
 
 private:
-    enum class Source { SoundCloud, YouTube, Lost };
-    static Source sourceForTurn(int turn);
+    enum class Source { SoundCloud, YouTube, Lost, Taste };
+    static Source sourceForTurn(int turn, bool taste);
+    bool tasteActive() const;
+    QList<QVariantMap> tasteSeeds();
     static QString seedQuery(const QVariantMap& track);
 
     std::optional<QVariantMap> takeExtra();
@@ -56,6 +61,12 @@ private:
     SoundCloudService* soundcloud;
     YouTubeService* youtube;
     CandidateFilter* filter = nullptr;
+    TasteRadio* radio = nullptr;
+    bool m_tasteBusy = false;
+    QList<QVariantMap> m_taste;
+    // дослушанное и лайкнутое, свежее первым: сиды для своих кандидатов
+    QList<QVariantMap> m_seedTracks;
+    QSet<QString> m_tasteUsed;
     bool m_enabled = true;
     bool m_soundcloudBusy = false;
     bool m_youtubeBusy = false;

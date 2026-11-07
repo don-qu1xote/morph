@@ -1,6 +1,7 @@
 #include "WaveMixer.h"
 #include "TrackMatch.h"
 #include "CandidateFilter.h"
+#include "TasteRadio.h"
 #include "../services/SoundCloudService.h"
 #include "../services/YouTubeService.h"
 #include <QRandomGenerator>
@@ -51,6 +52,10 @@ void WaveMixer::setLostTracks(const QVariantList& tracks) {
 void WaveMixer::addSeed(const QVariantMap& track) {
     QString query = seedQuery(track);
     if (query.isEmpty()) return;
+    QString key = TrackMatch::songKey(track);
+    m_seedTracks.removeIf([&key](const QVariantMap& t) { return TrackMatch::songKey(t) == key; });
+    m_seedTracks.prepend(track);
+    while (m_seedTracks.size() > kSeedLimit) m_seedTracks.removeLast();
     m_seeds.removeAll(query);
     m_seeds.prepend(query);
     while (m_seeds.size() > kSeedLimit) m_seeds.removeLast();
@@ -87,27 +92,57 @@ void WaveMixer::addBatch(const QString& serviceName, const QVariantList& tracks)
     refill();
 }
 
-// SoundCloud и YouTube по очереди, каждый пятый слот для убранного лайка
-WaveMixer::Source WaveMixer::sourceForTurn(int turn) {
+// SoundCloud и YouTube по очереди, каждый пятый слот для убранного лайка.
+// Со своими кандидатами из пяти слотов два за ними, по одному SoundCloud и YouTube
+WaveMixer::Source WaveMixer::sourceForTurn(int turn, bool taste) {
     if (turn % 5 == 4) return Source::Lost;
+    if (taste) {
+        static const Source order[] = {Source::Taste, Source::SoundCloud, Source::Taste, Source::YouTube};
+        return order[turn % 5];
+    }
     return turn % 2 == 0 ? Source::SoundCloud : Source::YouTube;
+}
+
+bool WaveMixer::tasteActive() const {
+    return radio && radio->isAvailable();
 }
 
 // Если SoundCloud или YouTube нечего дать, слот берёт второй из них.
 // Убранные лайки соседей не подменяют, иначе без SoundCloud и yt-dlp
 // треть волны состояла бы из них
 std::optional<QVariantMap> WaveMixer::takeExtra() {
-    switch (sourceForTurn(m_turn++)) {
+    switch (sourceForTurn(m_turn++, tasteActive())) {
     case Source::Lost:
         return takeFrom(m_lost);
-    case Source::SoundCloud:
+    case Source::Taste:
+        if (auto t = takeFrom(m_taste)) return t;
         if (auto t = takeFrom(m_soundcloud)) return t;
         return takeFrom(m_youtube);
+    case Source::SoundCloud:
+        if (auto t = takeFrom(m_soundcloud)) return t;
+        if (auto t = takeFrom(m_youtube)) return t;
+        return takeFrom(m_taste);
     case Source::YouTube:
         if (auto t = takeFrom(m_youtube)) return t;
-        return takeFrom(m_soundcloud);
+        if (auto t = takeFrom(m_soundcloud)) return t;
+        return takeFrom(m_taste);
     }
     return std::nullopt;
+}
+
+// Сиды для своих кандидатов: дослушанное и лайкнутое, которое ещё не было
+// сидом; если такого нет, треки последней партии волны
+QList<QVariantMap> WaveMixer::tasteSeeds() {
+    QList<QVariantMap> seeds;
+    auto take = [this, &seeds](const QVariantMap& t) {
+        QString key = TrackMatch::songKey(t);
+        if (key.isEmpty() || m_tasteUsed.contains(key) || seeds.size() >= 3) return;
+        m_tasteUsed.insert(key);
+        seeds.append(t);
+    };
+    for (const QVariantMap& t : std::as_const(m_seedTracks)) take(t);
+    for (const QVariant& t : std::as_const(m_lastBatch)) take(t.toMap());
+    return seeds;
 }
 
 // за то время, что трек лежал в пуле, такой же мог прийти из другого источника
@@ -120,6 +155,18 @@ std::optional<QVariantMap> WaveMixer::takeFrom(QList<QVariantMap>& pool) {
 }
 
 void WaveMixer::refill() {
+    if (!m_tasteBusy && m_taste.size() < kLowWater && tasteActive()) {
+        QList<QVariantMap> seeds = tasteSeeds();
+        if (!seeds.isEmpty()) {
+            m_tasteBusy = true;
+            radio->candidates(seeds, kFetchCount / 2, [this](const QVariantList& tracks) {
+                filtered(tracks, "Last.fm", [this](const QVariantList& clean) {
+                    m_tasteBusy = false;
+                    addToPool(m_taste, clean, "Last.fm");
+                });
+            });
+        }
+    }
     if (!m_soundcloudBusy && m_soundcloud.size() < kLowWater && soundcloud->hasToken()) {
         QString seed = nextSeed();
         if (!seed.isEmpty()) {

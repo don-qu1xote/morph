@@ -50,6 +50,7 @@
 - **Autoplay**: When a playlist or album ends, a wave by its last track keeps the music going. Turn it off in Settings.
 - **Keyboard Shortcuts**: `Space`/`K` play or pause, `J`/`L` seek 5 s, `,`/`.` previous and next, `=`/`-` volume, `S` shuffle, `Q` queue, `W` lyrics.
 - **Search History**: Automatically keeps track of your 20 most recently played tracks from searches for quick access.
+- **Taste Space**: with a free Last.fm API key morph builds its own map of music from what millions of people listen to together, places every song and you in it (your long-term taste and the taste of this session), and uses it both to order the wave and to bring new tracks into it: songs Last.fm finds next to what you just finished, closest to your taste first. Skip two tracks and the next picks already lean away from them. Works the same for tracks from Yandex, SoundCloud and YouTube.
 - **Phone**: morph serves your library over the Subsonic API, so free players like Amperfy on iPhone (or Symfonium, Ultrasonic on Android) play it. MAIN, your playlists and fresh Daily Mixes show up there; with Amperfy's **Newest Songs** auto cache new likes and mixes download by themselves while the phone is home, then play offline. Stars on the phone are likes in MAIN, and what you play or skip there teaches Personal Ranking. Tracks Yandex removed play from their SoundCloud or YouTube versions, just like on the computer.
 - **Persistent Caching & Offline Support**: Automatically saves played tracks and viewed covers to local storage, enabling full playback without an internet connection.
 - **Advanced Cache Management**: Dedicated storage view with real-time size calculation and granular clearing options for tracks and covers.
@@ -159,6 +160,13 @@ The "SoundCloud Client ID" field accepts any of these:
 - **client_id** (enough for search, playback, the mixed wave and the removed tracks fallback, which asks SoundCloud first because it answers fast and without a VPN). Open [soundcloud.com](https://soundcloud.com), press **F12**, go to **Network**, filter by `api-v2` and copy the `client_id=` value from any request. It is the same for everyone and changes every few months.
 - **Current access token** (`eyJ...`). In the same request open **Headers** and copy the `Authorization` value, with or without the `OAuth ` prefix. It lives for 24 hours: morph uses it for personalized features like **Daily Mixes** while it is valid and keeps working on the `client_id` taken from inside it afterwards.
 - **Legacy `oauth_token` cookie** (`2-...`), if your account still has one.
+
+### Last.fm API Key
+1. Sign in at [last.fm](https://www.last.fm) and open [last.fm/api/account/create](https://www.last.fm/api/account/create).
+2. Fill in any application name and description, leave the callback URL empty and press **Submit**.
+3. Copy the **API key** (32 letters and digits; the shared secret is not needed) into **Settings**, **RECOMMENDATIONS**, **Last.fm API Key**.
+
+morph asks Last.fm about your favourite artists in the background, at most four requests a second, and keeps the answers for a month in `knowledge.db`.
 
 ### Phone
 1. In **Settings**, turn on **Phone Server** under PHONE. It shows the server address, the user `morph` and a password.

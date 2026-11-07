@@ -87,6 +87,7 @@ add_library(morph_core STATIC
     src/core/KnowledgeBase.h src/core/KnowledgeBase.cpp
     src/core/MusicSpace.h src/core/MusicSpace.cpp
     src/core/TasteVectors.h src/core/TasteVectors.cpp
+    src/core/TasteRadio.h src/core/TasteRadio.cpp
     src/server/HttpServer.h src/server/HttpServer.cpp
     src/server/SubsonicBackend.h
     src/server/SubsonicCatalog.h src/server/SubsonicCatalog.cpp

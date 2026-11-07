@@ -173,6 +173,32 @@ flowchart LR
     K --> R
 ```
 
+## Пространство музыки
+
+Своя модель вкуса поверх Last.fm ([ADR-0020](adr/0020-taste-space.md)).
+`LastFmApi` спрашивает похожие треки, похожих артистов и популярное у артиста,
+`KnowledgeBase` держит ответы месяц в SQLite (`knowledge.db`) и в памяти.
+Прогрев идёт по любимым артистам из профиля и MAIN, дальше база растёт с
+каждым дослушанным треком и лайком.
+
+`MusicSpace` складывает граф похожих артистов в 32-мерное пространство
+(спектральное вложение, в фоновом потоке, когда база затихла на 15 секунд).
+`TasteVectors` держит в нём вкус надолго и вкус сессии, `Recommender` даёт
+ранжированию признаки `cosU`, `cosS`, `cosL`. `TasteRadio` берёт соседей по
+Last.fm у дослушанного, оставляет близкое к вкусу, и миксер ставит их в волну.
+
+```mermaid
+flowchart LR
+    F[Last.fm] --> K[(KnowledgeBase)]
+    K -->|похожие артисты| S[MusicSpace]
+    S -->|"v песни"| T[TasteVectors]
+    H[история и MAIN] --> T
+    T -->|"cos(u, v)"| R[Recommender]
+    K -->|похожие треки| D[TasteRadio]
+    S --> D
+    D --> M[WaveMixer] --> R
+```
+
 ## Плейлисты от morph
 
 `MorphMixes` собирает Daily Mix, Discover Weekly, Release Radar, On Repeat и

@@ -108,6 +108,9 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_warmTimer->setSingleShot(true);
     m_warmTimer->setInterval(3000);
     connect(m_warmTimer, &QTimer::timeout, this, &ServiceManager::warmKnowledge);
+    m_radio = new TasteRadio(m_knowledge, m_recommender, this);
+    m_radio->setSpace([this]() { return m_space; });
+    mixer->setTasteRadio(m_radio);
     // то, что уже лежит в базе, складывается в пространство сразу после старта
     if (m_knowledge->size() > 0) QTimer::singleShot(1000, this, &ServiceManager::rebuildSpace);
     connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
@@ -679,6 +682,10 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     // связь знает и песню, которую только что убрали из MAIN
     QString yandexId = m_syncToYandex ? m_library->yandexId(TrackMatch::songKey(track)) : QString();
     if (!yandexId.isEmpty()) yandex->setLiked(yandexId, liked);
+}
+
+QVariantMap ServiceManager::tasteStatus() const {
+    return {{"facts", m_knowledge->size()}, {"artists", m_space ? m_space->size() : 0}};
 }
 
 void ServiceManager::setLastFmKey(const QString& key) {

@@ -2006,6 +2006,20 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        Text {
+                                            id: tasteStatusText
+                                            property var status: ({})
+                                            Layout.fillWidth: true
+                                            visible: lastFmKeyField.text.trim() !== ""
+                                            text: status.artists > 0 ? "Knows " + status.artists + " artists from " + status.facts + " Last.fm answers"
+                                                                     : "Learning from Last.fm: the map of your music appears in a minute or two"
+                                            color: "#888"; font.family: mainFont.name; font.pixelSize: 11; wrapMode: Text.WordWrap
+                                            Timer {
+                                                interval: 3000; repeat: true; triggeredOnStart: true
+                                                running: tasteStatusText.visible
+                                                onTriggered: tasteStatusText.status = MorphServices.tasteStatus()
+                                            }
+                                        }
                                         SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "PHONE"; caption: "Amperfy and other Subsonic apps"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         PhoneSection {
                                             Layout.fillWidth: true
