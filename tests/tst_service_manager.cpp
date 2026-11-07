@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLocale>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -353,7 +354,13 @@ private slots:
         // ё ищется и через е
         QCOMPARE(ids(services.arrangeTracks(list, "елка", "custom")), QStringList({"1"}));
         QCOMPARE(ids(services.arrangeTracks(list, "", "title")).first(), QString("3"));
+        // Порядок букв идёт от языка системы: в русском кириллица раньше
+        // латиницы, в английском наоборот. Проверяются оба, а не язык машины
+        QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedStates));
         QCOMPARE(ids(services.arrangeTracks(list, "", "artist")).last(), QString("1"));
+        QLocale::setDefault(QLocale(QLocale::Russian, QLocale::Russia));
+        QCOMPARE(ids(services.arrangeTracks(list, "", "artist")).first(), QString("1"));
+        QLocale::setDefault(QLocale::system());
         QCOMPARE(ids(services.arrangeTracks(list, "", "duration")), QStringList({"2", "3", "1"}));
 
         services.nowPlaying(list[2].toMap());

@@ -66,6 +66,8 @@ tidy: configure ## clang-tidy по изменённым файлам
 ci: ## всё, что гоняет CI: формат, сборка, тесты, tidy
 	scripts/check-format.sh $(UPSTREAM)
 	$(MAKE) test BUILD_DIR=build-ci
+	# ещё раз в русской локали: сортировка и поиск зависят от языка системы
+	LC_ALL=ru_RU.UTF-8 LANG=ru_RU.UTF-8 ctest --test-dir build-ci --output-on-failure
 	scripts/tidy-changed.sh build-ci $(UPSTREAM)
 
 .PHONY: docker-image
