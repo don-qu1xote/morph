@@ -9,6 +9,8 @@
 static const int kIterations = 8;
 // запас столбцов сверх нужных: с ним старшие собственные векторы точнее
 static const int kOversample = 8;
+// доля средней степени, которая добавляется каждому артисту, см. build
+static const double kRegularization = 1.0;
 
 static QString artistKeyOf(const QString& name) {
     return TrackMatch::artistKey(QVariantMap{{"artist", name}});
@@ -56,20 +58,26 @@ static void jacobi(QVector<double>& a, QVector<double>& v, int k) {
     }
 }
 
-// столбцы n на k по очереди: ортонормировать Грамом-Шмидтом
-static void orthonormalize(QVector<double>& x, int n, int k) {
+// Столбцы n на k по очереди: убрать направление trivial и ортонормировать
+// Грамом-Шмидтом. Столбец, от которого ничего не осталось, обнуляется, иначе
+// остаток округления попал бы в поворот Рэлея-Ритца как настоящий вектор
+static void orthonormalize(QVector<double>& x, int n, int k, const QVector<double>& trivial) {
     for (int j = 0; j < k; ++j) {
         double* col = x.data() + qsizetype(j) * n;
-        for (int prev = 0; prev < j; ++prev) {
-            const double* p = x.constData() + qsizetype(prev) * n;
+        auto remove = [&](const double* p) {
             double dot = 0;
             for (int i = 0; i < n; ++i) dot += col[i] * p[i];
             for (int i = 0; i < n; ++i) col[i] -= dot * p[i];
-        }
+        };
+        remove(trivial.constData());
+        for (int prev = 0; prev < j; ++prev) remove(x.constData() + qsizetype(prev) * n);
         double norm = 0;
         for (int i = 0; i < n; ++i) norm += col[i] * col[i];
         norm = std::sqrt(norm);
-        if (norm < 1e-12) continue;
+        if (norm < 1e-12) {
+            std::fill(col, col + n, 0.0);
+            continue;
+        }
         for (int i = 0; i < n; ++i) col[i] /= norm;
     }
 }
@@ -77,9 +85,7 @@ static void orthonormalize(QVector<double>& x, int n, int k) {
 MusicSpace MusicSpace::build(const QList<QPair<QString, QList<KnowledgeBase::Neighbor>>>& graph, quint32 seed) {
     MusicSpace space;
     QVector<QHash<int, double>> adjacency;
-    auto node = [&](const QString& name) {
-        QString key = artistKeyOf(name);
-        if (key.isEmpty()) return -1;
+    auto node = [&](const QString& key, const QString& name) {
         auto it = space.m_index.constFind(key);
         if (it != space.m_index.cend()) return it.value();
         int id = int(space.m_keys.size());
@@ -89,14 +95,18 @@ MusicSpace MusicSpace::build(const QList<QPair<QString, QList<KnowledgeBase::Nei
         adjacency.append(QHash<int, double>());
         return id;
     };
+    // Узел появляется только с первым ребром. Артист без похожих (Last.fm его
+    // не знает) ничего не говорит о соседстве, а одинокая точка дала бы ещё
+    // одно собственное число 1 и забрала бы измерение у настоящих компаний
     for (const auto& [source, neighbors] : graph) {
-        int s = node(source);
-        if (s < 0) continue;
+        QString sourceKey = artistKeyOf(source);
+        if (sourceKey.isEmpty()) continue;
         for (const KnowledgeBase::Neighbor& n : neighbors) {
-            int t = node(n.artist);
-            if (t < 0 || t == s) continue;
             double w = qBound(0.0, n.match, 1.0);
-            if (w <= 0) continue;
+            QString targetKey = artistKeyOf(n.artist);
+            if (w <= 0 || targetKey.isEmpty() || targetKey == sourceKey) continue;
+            int s = node(sourceKey, source);
+            int t = node(targetKey, n.artist);
             double& st = adjacency[s][t];
             st = qMax(st, w);
             adjacency[t][s] = st;
@@ -104,41 +114,82 @@ MusicSpace MusicSpace::build(const QList<QPair<QString, QList<KnowledgeBase::Nei
     }
 
     const int n = int(space.m_keys.size());
-    if (n < 3) {
-        space = MusicSpace();
-        return space;
+    if (n < 3) return {};
+
+    // Рёбра по порядку номеров: от порядка сложения зависит округление, а QHash
+    // в каждом запуске обходит ключи по-своему. С порядком карта из одних и тех
+    // же ответов Last.fm получается одной и той же
+    QVector<int> first(n + 1, 0);
+    QVector<int> to;
+    QVector<double> weight;
+    QVector<double> degree(n);
+    double total = 0;
+    for (int i = 0; i < n; ++i) {
+        QList<int> keys = adjacency[i].keys();
+        std::sort(keys.begin(), keys.end());
+        // петля на каждом узле: артист с одним соседом не скачет от итерации к итерации
+        degree[i] = 1;
+        for (int j : std::as_const(keys)) {
+            double w = adjacency[i].value(j);
+            to.append(j);
+            weight.append(w);
+            degree[i] += w;
+        }
+        first[i + 1] = int(to.size());
+        total += degree[i];
     }
 
-    // S = D^-1/2 (A + I) D^-1/2: петля на каждом узле держит одиноких артистов на месте
+    // Регуляризация (Amini и др., 2013): к каждой степени средняя степень tau, а
+    // все артисты слабо связаны друг с другом весом tau / n. Граф становится
+    // связным, и мелкие острова из пары малоизвестных артистов не забирают
+    // главные измерения у больших компаний (Zhang и Rohe, 2018).
+    // S = D^-1/2 (A + I + tau/n) D^-1/2, у неё ровно известный вектор sqrt(d)
+    // с числом 1: он про то, сколько у артиста соседей, а не про музыку
+    const double tau = kRegularization * total / n;
     QVector<double> scale(n);
+    QVector<double> trivial(n);
+    double length = 0;
     for (int i = 0; i < n; ++i) {
-        double degree = 1;
-        for (double w : std::as_const(adjacency[i])) degree += w;
-        scale[i] = 1 / std::sqrt(degree);
+        double d = degree[i] + tau;
+        scale[i] = 1 / std::sqrt(d);
+        trivial[i] = std::sqrt(d);
+        length += d;
     }
+    for (double& t : trivial) t /= std::sqrt(length);
+
+    QVector<double> z(n);
     auto multiply = [&](const QVector<double>& x, QVector<double>& y, int k) {
-        y.fill(0, qsizetype(n) * k);
-        for (int i = 0; i < n; ++i) {
-            for (int j = 0; j < k; ++j) {
-                y[qsizetype(j) * n + i] += x[qsizetype(j) * n + i] * scale[i] * scale[i];
+        y.resize(qsizetype(n) * k);
+        for (int j = 0; j < k; ++j) {
+            const double* in = x.constData() + qsizetype(j) * n;
+            double* out = y.data() + qsizetype(j) * n;
+            double everyone = 0;
+            for (int i = 0; i < n; ++i) {
+                z[i] = in[i] * scale[i];
+                everyone += z[i];
             }
-            for (auto it = adjacency[i].cbegin(); it != adjacency[i].cend(); ++it) {
-                double w = it.value() * scale[i] * scale[it.key()];
-                for (int j = 0; j < k; ++j) y[qsizetype(j) * n + i] += w * x[qsizetype(j) * n + it.key()];
+            everyone *= tau / n;
+            for (int i = 0; i < n; ++i) {
+                double sum = z[i] + everyone;
+                for (int e = first[i]; e < first[i + 1]; ++e) sum += weight[e] * z[to[e]];
+                out[i] = sum * scale[i];
             }
         }
     };
 
-    const int k = qMin(n, kDim + 1 + kOversample);
+    // Вектор sqrt(d) убираем из подпространства на каждом шаге, а не ищем и
+    // выкидываем потом. Когда у S несколько чисел 1, «первый» среди них выбирал
+    // шум округления, и карта зависела от процессора и запуска
+    const int k = qMin(n - 1, kDim + kOversample);
     QRandomGenerator random(seed);
     QVector<double> x(qsizetype(n) * k);
     for (double& value : x) value = random.generateDouble() * 2 - 1;
-    orthonormalize(x, n, k);
+    orthonormalize(x, n, k, trivial);
     QVector<double> y;
     for (int iter = 0; iter < kIterations; ++iter) {
         multiply(x, y, k);
         x.swap(y);
-        orthonormalize(x, n, k);
+        orthonormalize(x, n, k, trivial);
     }
 
     // Рэлей-Ритц: B = X^T S X, его собственные векторы поворачивают X в собственные S
@@ -160,15 +211,14 @@ MusicSpace MusicSpace::build(const QList<QPair<QString, QList<KnowledgeBase::Nei
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [&](int l, int r) { return b[l * k + l] > b[r * k + r]; });
 
-    // Первый вектор пропускаем: у связного графа он про число соседей, а не про
-    // музыку. Остальные весят как lambda^2 (диффузионные координаты): мелкие
+    // Каждая координата весит lambda^2 (диффузионные координаты): мелкие
     // собственные числа это шум внутри компании, без веса они разводили бы похожих
-    const int dims = qMin(kDim, k - 1);
+    const int dims = qMin(kDim, k);
     space.m_points.resize(n);
     for (int i = 0; i < n; ++i) {
         Vector point{};
         for (int d = 0; d < dims; ++d) {
-            int col = order[d + 1];
+            int col = order[d];
             double lambda = qMax(0.0, b[col * k + col]);
             double value = 0;
             for (int j = 0; j < k; ++j) value += x[qsizetype(j) * n + i] * v[j * k + col];

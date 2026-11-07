@@ -79,6 +79,44 @@ private slots:
         QVERIFY(MusicSpace::build(g).isEmpty());
     }
 
+    // Компании ничем не связаны, и у Lonely на Last.fm нет похожих. Раньше у
+    // такого графа было несколько собственных чисел 1, и какое из них выкинуть,
+    // решало округление: на маке рэп и трип-хоп сливались в одну точку
+    void unconnectedCrowdsSameForAnyStart() {
+        Graph g = twoCrowds();
+        g[0].second.removeLast();
+        g.append({"Lonely", QList<KnowledgeBase::Neighbor>()});
+        QList<double> across;
+        for (quint32 seed = 1; seed <= 8; ++seed) {
+            MusicSpace space = MusicSpace::build(g, seed);
+            QCOMPARE(space.size(), 10);
+            QVERIFY(space.artist(TrackMatch::artistKey(QVariantMap{{"artist", "Lonely"}})) == nullptr);
+            QVERIFY(MusicSpace::cosine(of(space, "Zamay"), of(space, "Markul")) > 0.9);
+            across.append(MusicSpace::cosine(of(space, "Zamay"), of(space, "Portishead")));
+            QVERIFY2(across.last() < 0, qPrintable(QString::number(across.last())));
+            QVERIFY(qAbs(across.last() - across.first()) < 1e-6);
+        }
+    }
+
+    // сорок островов по три малоизвестных артиста не забирают измерения у больших компаний
+    void smallIslandsDoNotTakeOver() {
+        Graph g = twoCrowds();
+        for (int i = 0; i < 40; ++i) {
+            for (int a = 0; a < 3; ++a) {
+                QList<KnowledgeBase::Neighbor> n;
+                for (int b = 0; b < 3; ++b) {
+                    if (a != b) n.append({QString("Island %1 Artist %2").arg(i).arg(b), {}, 0.7, 0});
+                }
+                g.append({QString("Island %1 Artist %2").arg(i).arg(a), n});
+            }
+        }
+        MusicSpace space = MusicSpace::build(g);
+        double inside = MusicSpace::cosine(of(space, "Zamay"), of(space, "Markul"));
+        double across = MusicSpace::cosine(of(space, "Zamay"), of(space, "Portishead"));
+        QVERIFY2(inside > 0.7, qPrintable(QString::number(inside)));
+        QVERIFY2(across < 0.3, qPrintable(QString::number(across)));
+    }
+
     // артиста нет в графе, но его похожие треки у второй компании: туда он и встаёт
     void songFindsPlaceByItsSimilarTracks() {
         MusicSpace space = MusicSpace::build(twoCrowds());
