@@ -27,6 +27,14 @@ void TokenManager::setPinterestToken(const QString& token) {
     emit settingsChanged();
 }
 
+void TokenManager::setPhonePassword(const QString& password) {
+    (*m_data)["phone_password"] = CryptoUtils::encrypt(password);
+}
+
+QString TokenManager::getPhonePassword() {
+    return CryptoUtils::decrypt((*m_data)["phone_password"].toString());
+}
+
 QString TokenManager::getPinterestToken() {
     return CryptoUtils::decrypt((*m_data)["pinterest_token"].toString());
 }

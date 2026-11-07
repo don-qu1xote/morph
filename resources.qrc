@@ -18,6 +18,7 @@
     <file>ui/components/VibeBackdrop.qml</file>
     <file>ui/components/MainCard.qml</file>
     <file>ui/components/PlaylistDialog.qml</file>
+    <file>ui/components/PhoneSection.qml</file>
     <file>ui/components/PlaylistSuggestions.qml</file>
     <file>assets/home-circle.svg</file>
     <file>assets/music-circle.svg</file>
@@ -29,6 +30,7 @@
     <file>assets/dislike.svg</file>
     <file>assets/shuffle-variant.svg</file>
     <file>assets/sync.svg</file>
+    <file>assets/cellphone.svg</file>
     <file>assets/creation.svg</file>
     <file>assets/waveform.svg</file>
     <file>assets/sort-variant.svg</file>

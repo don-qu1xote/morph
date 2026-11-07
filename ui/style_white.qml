@@ -1983,6 +1983,13 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "PHONE"; caption: "Amperfy and other Subsonic apps"; subtextColor: "#888888"; fontFamily: mainFont.name }
+                                        PhoneSection {
+                                            Layout.fillWidth: true
+                                            textColor: "#111111"; subtextColor: "#888888"; cardColor: "#f0f0f0"; borderColor: "#cccccc"
+                                            accentColor: "#b57339"; trackColor: "#dddddd"; fontFamily: mainFont.name
+                                            onToast: (message) => showToast(message)
+                                        }
                                         SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "AUDIO"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 10

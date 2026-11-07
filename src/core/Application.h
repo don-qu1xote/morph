@@ -9,7 +9,9 @@
 #include "utils/CacheManager.h"
 #include "network/NetworkManager.h"
 #include "audio/AudioEngine.h"
+#include "MorphCore.h"
 #include "ServiceManager.h"
+#include "../server/PhoneServer.h"
 #include "ListenTracker.h"
 #include "PlaybackQueue.h"
 #include "settings/SettingsManager.h"
@@ -38,13 +40,12 @@ private:
     void bindContextProperties();
 
     QQmlApplicationEngine* engine;
+    MorphCore* core;
     FileWatcher* watcher;
     NetworkManager* net;
     CacheManager* cache;
     AudioEngine* audio;
     ServiceManager* services;
-    // из какого браузера уже импортированы лайки YouTube в этом запуске
-    QString youtubeLikesBrowser;
     ListenTracker* listens;
     PlaybackQueue* queue;
     SettingsManager* settings;

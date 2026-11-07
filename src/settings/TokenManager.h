@@ -16,6 +16,10 @@ public:
     QString getSoundCloudToken();
     void setPinterestToken(const QString& token);
     QString getPinterestToken();
+    // пароль сервера для телефона: Subsonic считает от него хэш, поэтому
+    // хранится обратимо, как и токены
+    void setPhonePassword(const QString& password);
+    QString getPhonePassword();
 
 signals:
     void settingsChanged();

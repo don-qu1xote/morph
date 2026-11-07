@@ -378,6 +378,24 @@ QString SettingsManager::getYouTubeLikesBrowser() {
     return m_data["youtube_likes_browser"].toString();
 }
 
+void SettingsManager::setPhoneServerEnabled(bool enabled) {
+    m_data["phone_server"] = enabled;
+    save();
+}
+
+bool SettingsManager::getPhoneServerEnabled() {
+    return m_data["phone_server"].toBool(false);
+}
+
+void SettingsManager::setPhonePassword(const QString& password) {
+    m_tokens->setPhonePassword(password);
+    save();
+}
+
+QString SettingsManager::getPhonePassword() {
+    return m_tokens->getPhonePassword();
+}
+
 void SettingsManager::setSyncPlaylistsToYandex(bool enabled) {
     m_data["sync_playlists_to_yandex"] = enabled;
     save();

@@ -2229,6 +2229,13 @@ function playTrack(track, index) {
                                                 }
                                             }
                                         }
+                                        SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "PHONE"; caption: "Amperfy and other Subsonic apps"; subtextColor: "#888888"; fontFamily: mainFont.name }
+                                        PhoneSection {
+                                            Layout.fillWidth: true
+                                            textColor: "white"; subtextColor: "#888888"; cardColor: "#1a1a1a"; borderColor: "#333333"
+                                            accentColor: "#b57339"; trackColor: "#222222"; fontFamily: mainFont.name
+                                            onToast: (message) => showToast(message)
+                                        }
                                         SectionHeader { Layout.fillWidth: true; Layout.topMargin: 12; compact: true; title: "AUDIO"; subtextColor: "#888888"; fontFamily: mainFont.name }
                                         ColumnLayout {
                                             Layout.fillWidth: true; spacing: 10

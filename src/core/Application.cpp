@@ -29,17 +29,16 @@ static void enableWindowDarkMode(QWindow* window) {
 #endif
 
 Application::Application(QObject *parent) : QObject(parent) {
-    connect(&PathProvider::instance(), &PathProvider::configRestored, this, [this](const QString& msg) {
-        pendingNotifications.append(msg);
-    });
-    PathProvider::instance().ensureConfigExists();
+    connect(&PathProvider::instance(), &PathProvider::configRestored, this,
+            [this](const QString& msg) { pendingNotifications.append(msg); });
 
     engine = new QQmlApplicationEngine(this);
-    net = new NetworkManager(this);
-    cache = new CacheManager(net, this);
-    settings = new SettingsManager(cache, this);
+    core = new MorphCore(this);
+    net = core->net();
+    cache = core->cache();
+    settings = core->settings();
+    services = core->services();
     audio = new AudioEngine(this);
-    services = new ServiceManager(net, cache, this);
     listens = new ListenTracker(this);
     queue = new PlaybackQueue(this);
     mpris = new MprisManager(audio, this);
@@ -59,75 +58,12 @@ Application::Application(QObject *parent) : QObject(parent) {
     connect(services, &ServiceManager::bitrateReady, this, [this](const QString&, int bitrate) {
         audio->setBitrate(bitrate);
     });
-    services->setYandexQuality(settings->getYandexQuality());
-    services->setSoundCloudQuality(settings->getSoundCloudQuality());
-    auto applyWaveSettings = [this]() {
-        services->setMixedWave(settings->getMixedWaveEnabled());
-        services->setSyncToYandex(settings->getSyncToYandex());
-        services->setSyncToSoundCloud(settings->getSyncToSoundCloud());
-        services->setSyncPlaylists(settings->getSyncPlaylistsToYandex());
-        services->setPinterest(settings->getPinterestToken(), settings->getPinterestBoard());
-        services->setSmartWaves(settings->getSmartWavesEnabled());
-        // morph:new и подобные свои, в сессию Яндекса они не уходят
-        QStringList seeds;
-        QString discovery;
-        for (const QVariant& value : settings->getWaveSettings()) {
-            QString seed = value.toString();
-            if (seed.startsWith("morph:")) discovery = seed.mid(6);
-            else seeds.append(seed);
-        }
-        services->setWaveSettings(seeds);
-        services->setDiscovery(discovery);
-    };
-    applyWaveSettings();
-    connect(settings, &SettingsManager::settingsChanged, services, applyWaveSettings);
-
     connect(audio, &AudioEngine::stateChanged, listens, [this]() { listens->playbackChanged(audio->isPlaying()); });
     connect(audio, &AudioEngine::durationChanged, listens, [this]() { listens->durationChanged(audio->duration()); });
     connect(audio, &AudioEngine::finished, listens, &ListenTracker::trackEnded);
     connect(services, &ServiceManager::trackStarted, listens, &ListenTracker::trackStarted);
     connect(listens, &ListenTracker::listenFinished, services, &ServiceManager::reportListen);
-    connect(settings, &SettingsManager::likeToggled, services, &ServiceManager::setLiked);
-    connect(services, &ServiceManager::likesFetched, settings, &SettingsManager::mergeServiceLikes);
-    connect(services, &ServiceManager::likesImported, settings, &SettingsManager::importServiceLikes);
-    // плейлисты в Яндекс: правят их по одному треку, поэтому сверка после паузы
-    QTimer* playlistsTimer = new QTimer(this);
-    playlistsTimer->setSingleShot(true);
-    playlistsTimer->setInterval(3000);
-    connect(playlistsTimer, &QTimer::timeout, services,
-            [this]() { services->syncPlaylists(settings->getPlaylists()); });
-    connect(settings, &SettingsManager::playlistsChanged, playlistsTimer, qOverload<>(&QTimer::start));
-    connect(settings, &SettingsManager::playlistRenamed, services, &ServiceManager::playlistRenamed);
-    playlistsTimer->start();
-    // Доска Pinterest загрузилась: плейлистам без обложки и с обложкой с доски
-    // каждый запуск новая картинка. Обложку, поставленную руками, не трогаем
-    connect(services, &ServiceManager::coversReady, settings, [this]() {
-        const QVariantMap playlists = settings->getPlaylists();
-        for (auto it = playlists.cbegin(); it != playlists.cend(); ++it) {
-            QString cover = it.value().toMap()["coverUrl"].toString();
-            if (!cover.isEmpty() && !services->isPinterestCover(cover)) continue;
-            QString fresh = services->newCover("playlist:" + it.key());
-            if (!fresh.isEmpty()) settings->renamePlaylist(it.key(), it.key(), fresh);
-        }
-    });
-    // Лайки YouTube на старте и когда в настройках выбрали другой браузер.
-    // Браузеры там переключаются кликами по кругу, поэтому ждём, пока выбор устоится
-    QTimer* youtubeLikesTimer = new QTimer(this);
-    youtubeLikesTimer->setSingleShot(true);
-    youtubeLikesTimer->setInterval(3000);
-    connect(youtubeLikesTimer, &QTimer::timeout, this, [this]() {
-        QString browser = settings->getYouTubeLikesBrowser();
-        if (browser == youtubeLikesBrowser) return;
-        youtubeLikesBrowser = browser;
-        services->importYouTubeLikes(browser);
-    });
-    youtubeLikesTimer->start();
-    connect(settings, &SettingsManager::settingsChanged, youtubeLikesTimer, qOverload<>(&QTimer::start));
-    // MAIN собирается из лайков, поэтому идёт за ними следом
-    Library* library = services->library();
-    library->syncLikes(settings->getLikedTracks());
-    connect(settings, &SettingsManager::likesChanged, library,
-            [this, library]() { library->syncLikes(settings->getLikedTracks()); });
+    core->phone()->start();
 
     QTimer* gcTimer = new QTimer(this);
     connect(gcTimer, &QTimer::timeout, this, [this]() {
@@ -153,6 +89,7 @@ void Application::bindContextProperties() {
     engine->rootContext()->setContextProperty("MorphDiscord", discord);
     engine->rootContext()->setContextProperty("MorphCache", cache);
     engine->rootContext()->setContextProperty("MorphApp", this);
+    engine->rootContext()->setContextProperty("MorphPhone", core->phone());
 }
 
 void Application::start() {

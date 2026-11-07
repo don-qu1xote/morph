@@ -47,6 +47,7 @@ find_package(OpenSSL REQUIRED)
 # Всё, кроме main, живёт в статической библиотеке: её же линкуют тесты
 add_library(morph_core STATIC
     src/core/Application.h src/core/Application.cpp
+    src/core/MorphCore.h src/core/MorphCore.cpp
     src/utils/PathProvider.h src/utils/PathProvider.cpp
     src/utils/QmlHighlighter.h src/utils/QmlHighlighter.cpp
     src/utils/CacheManager.h src/utils/CacheManager.cpp
@@ -89,6 +90,7 @@ add_library(morph_core STATIC
     src/server/ServerAudio.h src/server/ServerAudio.cpp
     src/server/PhoneMixes.h src/server/PhoneMixes.cpp
     src/server/MorphBackend.h src/server/MorphBackend.cpp
+    src/server/PhoneServer.h src/server/PhoneServer.cpp
 )
 
 if(APPLE)

@@ -50,6 +50,7 @@
 - **Autoplay**: When a playlist or album ends, a wave by its last track keeps the music going. Turn it off in Settings.
 - **Keyboard Shortcuts**: `Space`/`K` play or pause, `J`/`L` seek 5 s, `,`/`.` previous and next, `=`/`-` volume, `S` shuffle, `Q` queue, `W` lyrics.
 - **Search History**: Automatically keeps track of your 20 most recently played tracks from searches for quick access.
+- **Phone**: morph serves your library over the Subsonic API, so free players like Amperfy on iPhone (or Symfonium, Ultrasonic on Android) play it. MAIN, your playlists and fresh Daily Mixes show up there; with Amperfy's **Newest Songs** auto cache new likes and mixes download by themselves while the phone is home, then play offline. Stars on the phone are likes in MAIN, and what you play or skip there teaches Personal Ranking. Tracks Yandex removed play from their SoundCloud or YouTube versions, just like on the computer.
 - **Persistent Caching & Offline Support**: Automatically saves played tracks and viewed covers to local storage, enabling full playback without an internet connection.
 - **Advanced Cache Management**: Dedicated storage view with real-time size calculation and granular clearing options for tracks and covers.
 - **Real-time Bitrate Display**: Shows current track quality and bitrate information directly in the interface for all supported services.
@@ -159,6 +160,13 @@ The "SoundCloud Client ID" field accepts any of these:
 - **Current access token** (`eyJ...`). In the same request open **Headers** and copy the `Authorization` value, with or without the `OAuth ` prefix. It lives for 24 hours: morph uses it for personalized features like **Daily Mixes** while it is valid and keeps working on the `client_id` taken from inside it afterwards.
 - **Legacy `oauth_token` cookie** (`2-...`), if your account still has one.
 
+### Phone
+1. In **Settings**, turn on **Phone Server** under PHONE. It shows the server address, the user `morph` and a password.
+2. On the phone install [Amperfy](https://apps.apple.com/app/amperfy-music/id1530145038) (or any Subsonic app), pick **Subsonic** and enter those three lines. The phone and the computer have to be on the same Wi-Fi.
+3. In Amperfy's account settings turn on **Newest Songs** under **Auto Cache**: new likes and the Daily Mixes of the day download by themselves. Open **MAIN** under Playlists and download it once to have your whole library offline.
+4. Install `ffmpeg` (`brew install ffmpeg`): SoundCloud and YouTube files are repacked into plain m4a that iPhone plays and seeks reliably.
+5. To keep the server running without the window, on macOS run `scripts/phone-server.sh install /path/to/morph.app`. It starts `morph --server` at login and keeps the Mac awake while it is on power. Opening the window takes over and closing it hands the library back to the server.
+
 ---
 
 ## Project Structure
@@ -169,6 +177,7 @@ The "SoundCloud Client ID" field accepts any of these:
 - `src/network/`: HTTP wrappers for API communication.
 - `src/settings/`: JSON-based local storage management for playlists, likes, tokens, and history.
 - `src/audio/`: Low-level audio engine integration.
+- `src/server/`: The Subsonic server for phones: HTTP, the catalog, files and daily mixes.
 - `ui/`: The frontend layer, containing `style.qml` and associated assets.
 - `tests/`: QtTest unit tests, services run against a local fake HTTP server.
 - `macos/`: Bundle Info.plist and icon.

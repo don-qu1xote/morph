@@ -70,6 +70,11 @@ public slots:
     QString getPinterestToken();
     void setPinterestBoard(const QString& board);
     QString getPinterestBoard();
+    // сервер для телефона (Amperfy и другие Subsonic-клиенты)
+    void setPhoneServerEnabled(bool enabled);
+    bool getPhoneServerEnabled();
+    void setPhonePassword(const QString& password);
+    QString getPhonePassword();
 
     void addSearchHistory(const QVariantMap& track);
     QVariantList getSearchHistory();
