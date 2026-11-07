@@ -3,6 +3,7 @@
 #include "../services/TrackData.h"
 #include "TrackMatch.h"
 #include <QCollator>
+#include <QtConcurrent>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -86,6 +87,29 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_knowledge = new KnowledgeBase(m_lastfm, PathProvider::getDataPath() + "/knowledge.db", this);
     connect(m_lastfm, &LastFmApi::keyRejected, this,
             [this]() { emit notice("Last.fm rejected the API key. Check it in Settings"); });
+
+    // Пространство пересобирается в фоне, когда база узнала новое и затихла:
+    // во время прогрева ответы идут потоком, пересобирать на каждый незачем
+    m_spaceBuild = new QFutureWatcher<MusicSpace>(this);
+    m_spaceTimer = new QTimer(this);
+    m_spaceTimer->setSingleShot(true);
+    m_spaceTimer->setInterval(15000);
+    connect(m_knowledge, &KnowledgeBase::learned, m_spaceTimer, qOverload<>(&QTimer::start));
+    connect(m_spaceTimer, &QTimer::timeout, this, &ServiceManager::rebuildSpace);
+    connect(m_spaceBuild, &QFutureWatcher<MusicSpace>::finished, this, [this]() {
+        auto space = std::make_shared<const MusicSpace>(m_spaceBuild->result());
+        if (space->isEmpty()) return;
+        m_space = space;
+        KnowledgeBase* knowledge = m_knowledge;
+        m_recommender->setVectors(
+            [space, knowledge](const QVariantMap& t) { return space->song(t, knowledge->knownSimilarTracks(t)); });
+    });
+    m_warmTimer = new QTimer(this);
+    m_warmTimer->setSingleShot(true);
+    m_warmTimer->setInterval(3000);
+    connect(m_warmTimer, &QTimer::timeout, this, &ServiceManager::warmKnowledge);
+    // то, что уже лежит в базе, складывается в пространство сразу после старта
+    if (m_knowledge->size() > 0) QTimer::singleShot(1000, this, &ServiceManager::rebuildSpace);
     connect(m_covers, &PinterestCovers::failed, this, &ServiceManager::notice);
     // доска пришла позже карточек: раздаём им обложки заново
     connect(m_covers, &PinterestCovers::loaded, this, [this]() {
@@ -632,6 +656,7 @@ void ServiceManager::reportListen(const QString& serviceName, const QString& tra
     Q_UNUSED(albumId);
     QVariantMap track = knownTrack(trackId);
     if (!track.isEmpty()) m_recommender->listened(track, playedSeconds, lengthSeconds, completed);
+    if (!track.isEmpty() && completed) learnAbout(track);
     m_started.remove(trackId);
     if (completed) mixer->trackFinished(trackId);
     if (serviceName == "Yandex") {
@@ -646,6 +671,7 @@ void ServiceManager::reportListen(const QString& serviceName, const QString& tra
 void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     m_recommender->liked(track, liked);
     if (liked) mixer->addSeed(track);
+    if (liked) learnAbout(track);
     if (track["service"].toString() == "Yandex") {
         yandex->setLiked(track["id"].toString(), liked);
         return;
@@ -653,6 +679,53 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     // связь знает и песню, которую только что убрали из MAIN
     QString yandexId = m_syncToYandex ? m_library->yandexId(TrackMatch::songKey(track)) : QString();
     if (!yandexId.isEmpty()) yandex->setLiked(yandexId, liked);
+}
+
+void ServiceManager::setLastFmKey(const QString& key) {
+    m_lastfm->setKey(key);
+    if (m_lastfm->isUsable()) m_warmTimer->start();
+}
+
+void ServiceManager::rebuildSpace() {
+    if (m_spaceBuild->isRunning()) {
+        m_spaceTimer->start();
+        return;
+    }
+    // копия графа уходит в поток, окно дальше не ждёт
+    auto graph = m_knowledge->allSimilarArtists();
+    m_spaceBuild->setFuture(QtConcurrent::run([graph]() { return MusicSpace::build(graph); }));
+}
+
+// Похожие для любимых артистов: из них и складывается пространство. Сначала
+// те, кого больше любишь по профилю, потом самые частые в MAIN
+void ServiceManager::warmKnowledge() {
+    QStringList names;
+    for (const auto& [key, score] : m_recommender->profile().top(150, m_recommender->now())) {
+        QString name = m_recommender->profile().name(key);
+        if (!name.isEmpty()) names.append(name);
+    }
+    QHash<QString, int> counts;
+    QHash<QString, QString> display;
+    for (const QVariant& v : m_library->tracks()) {
+        QVariantMap t = v.toMap();
+        QString key = TrackMatch::artistKey(t);
+        ++counts[key];
+        display.insert(key, TrackMatch::mainArtist(t));
+    }
+    QList<QPair<int, QString>> byCount;
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it) byCount.append({it.value(), it.key()});
+    std::sort(byCount.begin(), byCount.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    for (int i = 0; i < byCount.size() && names.size() < 250; ++i) {
+        QString name = display.value(byCount[i].second);
+        if (!names.contains(name)) names.append(name);
+    }
+    m_knowledge->warm(names);
+}
+
+void ServiceManager::learnAbout(const QVariantMap& track) {
+    if (!m_knowledge->hasSource()) return;
+    m_knowledge->similarTracks(track, [](const QList<KnowledgeBase::Neighbor>&) {});
+    m_knowledge->similarArtists(TrackMatch::mainArtist(track), [](const QList<KnowledgeBase::Neighbor>&) {});
 }
 
 void ServiceManager::dislike(const QVariantMap& track) {

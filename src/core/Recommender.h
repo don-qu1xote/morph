@@ -4,6 +4,7 @@
 #include "ListeningHistory.h"
 #include "Ranker.h"
 #include "TasteProfile.h"
+#include "TasteVectors.h"
 #include <QHash>
 #include <QObject>
 #include <QSet>
@@ -45,6 +46,12 @@ public:
     static bool isExternal(const QVariantMap& track);
     Ranker::Features features(const QVariantMap& track) const;
 
+    // Где песня в пространстве музыки. Задаётся, когда пространство собрано, и
+    // дальше вкус считается в нём: признаки cosU, cosS и cosL в ранжировании
+    void setVectors(TasteVectors::VectorOf vectorOf);
+    std::optional<MusicSpace::Vector> vectorOf(const QVariantMap& track) const;
+    const TasteVectors& taste() const { return m_taste; }
+
     // Партия волны ложится в запас, наружу уходят лучшие. Четверть остаётся и
     // соревнуется со следующей партией, поэтому то, что модель считает
     // скипом, так и не заиграет. Новая волна начинается с пустого запаса
@@ -75,6 +82,11 @@ private:
     // по TrackMatch::songKey, копится вместе с историей
     QHash<QString, ListeningHistory::SongStats> m_songs;
     QSet<QString> m_liked;
+    QVariantList m_likes;
+    TasteVectors m_taste;
+    TasteVectors::VectorOf m_vectorOf;
+    // по songKey: вектор песни считается один раз на пространство
+    mutable QHash<QString, std::optional<MusicSpace::Vector>> m_vectors;
 
     struct Pending {
         QVariantMap track;

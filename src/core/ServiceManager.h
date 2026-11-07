@@ -17,6 +17,9 @@
 #include "CandidateFilter.h"
 #include "FallbackFinder.h"
 #include "KnowledgeBase.h"
+#include "MusicSpace.h"
+#include <QFutureWatcher>
+#include <memory>
 #include "Library.h"
 #include "MorphMixes.h"
 #include "PlaylistSync.h"
@@ -37,6 +40,8 @@ public:
     // миксы для телефона: свой экземпляр, его готовность не открывает плейлист в окне
     MorphMixes* phoneMixes() const { return m_phoneMixes; }
     KnowledgeBase* knowledge() const { return m_knowledge; }
+    // пространство музыки, собранное из того, что знает база; может быть пустым
+    std::shared_ptr<const MusicSpace> space() const { return m_space; }
 
 public slots:
     void search(const QString& query, const QString& serviceName = "all");
@@ -90,7 +95,7 @@ public slots:
     // доска Pinterest для обложек: ссылка, имя или id
     void setPinterest(const QString& token, const QString& board) { m_covers->setAccount(token, board); }
     // ключ API Last.fm: на нём держится знание о похожем для своей модели
-    void setLastFmKey(const QString& key) { m_lastfm->setKey(key); }
+    void setLastFmKey(const QString& key);
     // новая обложка с доски для плейлиста key; пусто, если доска не загружена
     QString newCover(const QString& key) { return m_covers->next(key); }
     bool hasCovers() const { return m_covers->ready(); }
@@ -173,6 +178,14 @@ private:
     MorphMixes* m_phoneMixes;
     LastFmApi* m_lastfm;
     KnowledgeBase* m_knowledge;
+    std::shared_ptr<const MusicSpace> m_space;
+    QFutureWatcher<MusicSpace>* m_spaceBuild;
+    QTimer* m_spaceTimer;
+    QTimer* m_warmTimer;
+    void rebuildSpace();
+    void warmKnowledge();
+    // что слушал: про песню и её артиста узнать у Last.fm, пространство растёт с прослушиванием
+    void learnAbout(const QVariantMap& track);
     PlaylistSync* m_playlistSync;
     PinterestCovers* m_covers;
     // включённые и ещё не доигранные треки: прослушивание приходит только с id

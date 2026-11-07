@@ -15,13 +15,24 @@ static const double kMaxPrecision = 100;
 // выше, чем у новых признаков, поэтому первые же скипы их не перевернут
 static const QHash<QString, QPair<double, double>>& priors() {
     static const QHash<QString, QPair<double, double>> p = {
-        {"bias", {0.3, 1}},         {"affinity", {2.0, 4}},
-        {"known", {0.3, 2}},        {"liked", {0.8, 2}},
-        {"plays", {0.3, 2}},        {"skipRate", {-2.0, 2}},
-        {"songRecent", {-1.0, 2}},  {"artistRecent", {-0.5, 2}},
-        {"src:YouTube", {-0.2, 2}}, {"src:SoundCloud", {0.0, 2}},
-        {"src:Yandex", {0.0, 2}},   {"len", {0.0, 2}},
+        {"bias", {0.3, 1}},
+        {"affinity", {2.0, 4}},
+        {"known", {0.3, 2}},
+        {"liked", {0.8, 2}},
+        {"plays", {0.3, 2}},
+        {"skipRate", {-2.0, 2}},
+        {"songRecent", {-1.0, 2}},
+        {"artistRecent", {-0.5, 2}},
+        {"src:YouTube", {-0.2, 2}},
+        {"src:SoundCloud", {0.0, 2}},
+        {"src:Yandex", {0.0, 2}},
+        {"len", {0.0, 2}},
         {"new", {0.0, 2}},
+        // близость к вкусу в пространстве музыки: с первого дня вверх, дальше учится
+        {"cosU", {2.0, 4}},
+        {"cosS", {1.0, 2}},
+        {"cosL", {0.5, 2}},
+        {"noVec", {0.0, 2}},
     };
     return p;
 }

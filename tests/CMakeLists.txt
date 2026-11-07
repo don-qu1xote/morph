@@ -30,3 +30,4 @@ morph_add_test(tst_pinterest_covers tst_pinterest_covers.cpp support/FakeHttpSer
 morph_add_test(tst_subsonic_server tst_subsonic_server.cpp)
 morph_add_test(tst_phone_server tst_phone_server.cpp support/FakeHttpServer.h support/FakeTools.h)
 morph_add_test(tst_knowledge_base tst_knowledge_base.cpp support/FakeHttpServer.h)
+morph_add_test(tst_music_space tst_music_space.cpp)

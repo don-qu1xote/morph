@@ -43,6 +43,24 @@ void Recommender::setLikes(const QVariantList& likes) {
     m_profile.setLikes(likes);
     m_liked.clear();
     for (const QVariant& t : likes) m_liked.insert(TrackMatch::songKey(t.toMap()));
+    m_likes = likes;
+    if (m_vectorOf) m_taste.rebuild(m_history.events(), m_likes, [this](const QVariantMap& t) { return vectorOf(t); });
+}
+
+void Recommender::setVectors(TasteVectors::VectorOf vectorOf) {
+    m_vectorOf = std::move(vectorOf);
+    m_vectors.clear();
+    m_taste.rebuild(m_history.events(), m_likes, [this](const QVariantMap& t) { return this->vectorOf(t); });
+}
+
+std::optional<MusicSpace::Vector> Recommender::vectorOf(const QVariantMap& track) const {
+    if (!m_vectorOf) return std::nullopt;
+    QString key = TrackMatch::songKey(track);
+    auto it = m_vectors.constFind(key);
+    if (it != m_vectors.cend()) return it.value();
+    std::optional<MusicSpace::Vector> v = m_vectorOf(track);
+    m_vectors.insert(key, v);
+    return v;
 }
 
 void Recommender::listened(const QVariantMap& track, double played, double length, bool completed) {
@@ -87,6 +105,7 @@ void Recommender::record(ListenEvent event) {
         s.lastPlayed = event.at;
     }
     learn(event, x);
+    m_taste.add(event, vectorOf(event.track));
 }
 
 // Дослушал это 1, ушёл в первые полминуты 0, между ними доля прослушанного
@@ -149,6 +168,18 @@ Ranker::Features Recommender::features(const QVariantMap& track) const {
     }
     qint64 lastArtist = m_profile.lastHeard(artist);
     if (lastArtist > 0) x.append({"artistRecent", std::exp(-(now - lastArtist) / 60.0 / 45)});
+
+    // близость к вкусу: сейчас, в этой сессии и надолго
+    if (m_vectorOf) {
+        std::optional<MusicSpace::Vector> v = vectorOf(track);
+        if (!v) {
+            x.append({"noVec", 1});
+        } else {
+            if (auto u = m_taste.current(now)) x.append({"cosU", MusicSpace::cosine(*u, *v)});
+            if (auto s = m_taste.session(now)) x.append({"cosS", MusicSpace::cosine(*s, *v)});
+            if (auto l = m_taste.longTerm(now)) x.append({"cosL", MusicSpace::cosine(*l, *v)});
+        }
+    }
 
     QString service = track["service"].toString();
     if (!service.isEmpty()) x.append({"src:" + service, 1});
