@@ -17,6 +17,8 @@ class CacheManager : public QObject {
 public:
     explicit CacheManager(NetworkManager* net, QObject* parent = nullptr);
 
+    // имя файла трека в кэше без расширения: под ним же лежит и его звук
+    static QString fileKey(const QString& trackId);
     Q_INVOKABLE bool isTrackCached(const QString& trackId);
     Q_INVOKABLE QString getTrackPath(const QString& trackId);
     Q_INVOKABLE QString getTrackUrl(const QString& trackId);

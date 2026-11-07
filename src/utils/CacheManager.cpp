@@ -44,17 +44,19 @@ QString CacheManager::getHash(const QString& input) {
     return QString(QCryptographicHash::hash(input.toUtf8(), QCryptographicHash::Md5).toHex());
 }
 
-bool CacheManager::isTrackCached(const QString& trackId) {
-    if (!m_cacheScanned) scanCacheSets();
+QString CacheManager::fileKey(const QString& trackId) {
     QString safeId = trackId;
     safeId.replace("/", "_").replace(":", "_").replace("?", "_").replace("*", "_");
-    return m_cachedTracks.contains(safeId);
+    return safeId;
+}
+
+bool CacheManager::isTrackCached(const QString& trackId) {
+    if (!m_cacheScanned) scanCacheSets();
+    return m_cachedTracks.contains(fileKey(trackId));
 }
 
 QString CacheManager::getTrackPath(const QString& trackId) {
-    QString safeId = trackId;
-    safeId.replace("/", "_").replace(":", "_").replace("?", "_").replace("*", "_");
-    return PathProvider::getTrackCachePath() + "/" + safeId + ".mp3";
+    return PathProvider::getTrackCachePath() + "/" + fileKey(trackId) + ".mp3";
 }
 
 QString CacheManager::getTrackUrl(const QString& trackId) {

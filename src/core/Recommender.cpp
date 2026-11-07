@@ -24,6 +24,13 @@ static QString daypart(qint64 at) {
     return "evening";
 }
 
+// Скачок темпа меряется шагами по 0.1 октавы, около 7 %: в таких пределах
+// диджеи сводят треки без слышной смены темпа. Больше трёх шагов это уже
+// просто другой темп
+static const double kTempoStep = 0.1;
+// из скольких лучших подходящих выбирается следующий по переходу
+static const int kTransitionWindow = 4;
+
 Recommender::Recommender(const QString& dataDir, QObject* parent)
     : QObject(parent), m_now([]() { return QDateTime::currentSecsSinceEpoch(); }),
       m_history(dataDir + "/listening.jsonl"), m_rankerPath(dataDir + "/ranker.json") {
@@ -106,6 +113,29 @@ void Recommender::record(ListenEvent event) {
     }
     learn(event, x);
     m_taste.add(event, vectorOf(event.track));
+    if (m_soundOf && event.kind == ListenEvent::Listen) hear(event);
+}
+
+// Звук сессии двигается как вкус сессии: дослушанное тянет к себе, скип
+// отталкивает, полчаса тишины начинают заново. Последний трек запоминается
+// целиком: от него считается скачок к следующему
+void Recommender::hear(const ListenEvent& event) {
+    std::optional<Heard> heard = m_soundOf(event.track);
+    if (event.at - m_soundAt > TasteVectors::kSessionGap) m_soundSession.reset();
+    m_soundAt = event.at;
+    m_lastHeard = heard;
+    double reward = event.finished() ? 1 : (event.skipped() ? -1 : 0);
+    if (!heard || !heard->timbre || reward == 0) return;
+    AudioFeatures::Timbre next{};
+    double length = 0;
+    for (int d = 0; d < AudioFeatures::kTimbreDim; ++d) {
+        double v = (m_soundSession ? 0.7 * (*m_soundSession)[d] : 0) + 0.3 * reward * (*heard->timbre)[d];
+        next[d] = float(v);
+        length += v * v;
+    }
+    if (length <= 0) return;
+    for (float& v : next) v = float(v / std::sqrt(length));
+    m_soundSession = next;
 }
 
 // Дослушал это 1, ушёл в первые полминуты 0, между ними доля прослушанного
@@ -150,6 +180,10 @@ bool Recommender::isNew(const QVariantMap& track) const {
 }
 
 Ranker::Features Recommender::features(const QVariantMap& track) const {
+    return features(track, m_lastHeard);
+}
+
+Ranker::Features Recommender::features(const QVariantMap& track, const std::optional<Heard>& previous) const {
     qint64 now = m_now();
     QString artist = TrackMatch::artistKey(track);
     QString song = TrackMatch::songKey(track);
@@ -178,6 +212,27 @@ Ranker::Features Recommender::features(const QVariantMap& track) const {
             if (auto u = m_taste.current(now)) x.append({"cosU", MusicSpace::cosine(*u, *v)});
             if (auto s = m_taste.session(now)) x.append({"cosS", MusicSpace::cosine(*s, *v)});
             if (auto l = m_taste.longTerm(now)) x.append({"cosL", MusicSpace::cosine(*l, *v)});
+        }
+    }
+
+    // как трек звучит: похож ли на звук этой сессии и какой скачок от предыдущего
+    if (m_soundOf) {
+        std::optional<Heard> heard = m_soundOf(track);
+        if (!heard) {
+            x.append({"noSound", 1});
+        } else {
+            if (heard->timbre && m_soundSession && now - m_soundAt <= TasteVectors::kSessionGap) {
+                double cosine = 0;
+                for (int d = 0; d < AudioFeatures::kTimbreDim; ++d)
+                    cosine += double((*heard->timbre)[d]) * (*m_soundSession)[d];
+                x.append({"soundS", cosine});
+            }
+            if (previous) {
+                if (heard->bpm > 0 && previous->bpm > 0)
+                    x.append(
+                        {"tempoJump", qMin(3.0, AudioFeatures::tempoDistance(heard->bpm, previous->bpm) / kTempoStep)});
+                x.append({"energyJump", qAbs(heard->energy - previous->energy)});
+            }
         }
     }
 
@@ -216,6 +271,7 @@ QVariantList Recommender::rank(const QVariantList& candidates, int count, bool e
     QStringList recent;
     int fresh = 0;
     int external = 0;
+    std::optional<Heard> previous = m_lastHeard;
     auto fits = [&recent](const Scored& s) {
         if (!recent.isEmpty() && recent.last() == s.artist) return false;
         return recent.mid(qMax(0, recent.size() - kArtistWindow + 1)).count(s.artist) < kArtistPerWindow;
@@ -242,12 +298,29 @@ QVariantList Recommender::rank(const QVariantList& candidates, int count, bool e
             }
         };
         int pick = -1;
+        int pass = 0;
         // по порядку: обе доли и разнообразие, доля площадок, доля нового, разнообразие, что есть
-        for (int pass = 0; pass < 5 && pick < 0; ++pass) {
+        for (; pass < 5 && pick < 0; ++pass) {
             for (int i = 0; i < pool.size(); ++i) {
                 if (!suits(pool[i], pass)) continue;
                 pick = i;
                 break;
+            }
+        }
+        // Из нескольких лучших подходящих берётся тот, что лучше идёт после
+        // предыдущего: модель оценивает их заново со скачком темпа и энергии от него
+        if (m_soundOf) {
+            const int first = pick;
+            double best = -1;
+            int seen = 0;
+            for (int i = first; i < pool.size() && seen < kTransitionWindow; ++i) {
+                if (!suits(pool[i], pass - 1)) continue;
+                ++seen;
+                double p = m_ranker.predict(features(pool[i].track, previous), explore);
+                if (p > best) {
+                    best = p;
+                    pick = i;
+                }
             }
         }
         Scored s = pool.takeAt(pick);
@@ -255,6 +328,7 @@ QVariantList Recommender::rank(const QVariantList& candidates, int count, bool e
         if (s.external) ++external;
         recent.append(s.artist);
         out.append(s.track);
+        if (m_soundOf) previous = m_soundOf(s.track);
     }
     return out;
 }

@@ -1,6 +1,7 @@
 #ifndef RECOMMENDER_H
 #define RECOMMENDER_H
 
+#include "AudioFeatures.h"
 #include "ListeningHistory.h"
 #include "Ranker.h"
 #include "TasteProfile.h"
@@ -52,6 +53,19 @@ public:
     std::optional<MusicSpace::Vector> vectorOf(const QVariantMap& track) const;
     const TasteVectors& taste() const { return m_taste; }
 
+    // Что слышно в треке из кэша: тембр в общих единицах (когда услышанного
+    // уже достаточно для общей шкалы), темп и энергия
+    struct Heard {
+        std::optional<AudioFeatures::Timbre> timbre;
+        double bpm = 0;
+        double energy = 0;
+    };
+    using SoundOf = std::function<std::optional<Heard>(const QVariantMap&)>;
+    // Задаётся, когда есть библиотека звука. Признаки soundS (похоже ли на
+    // звук этой сессии), tempoJump и energyJump (скачок от предыдущего трека),
+    // а в rank следующий трек выбирается с оглядкой на переход
+    void setSounds(SoundOf soundOf) { m_soundOf = std::move(soundOf); }
+
     // Партия волны ложится в запас, наружу уходят лучшие. Четверть остаётся и
     // соревнуется со следующей партией, поэтому то, что модель считает
     // скипом, так и не заиграет. Новая волна начинается с пустого запаса
@@ -68,6 +82,9 @@ public:
 
 private:
     void record(ListenEvent event);
+    void hear(const ListenEvent& event);
+    // признаки трека, когда перед ним играет previous
+    Ranker::Features features(const QVariantMap& track, const std::optional<Heard>& previous) const;
     void learn(const ListenEvent& event, const Ranker::Features& x);
     void saveRanker();
 
@@ -85,6 +102,12 @@ private:
     QVariantList m_likes;
     TasteVectors m_taste;
     TasteVectors::VectorOf m_vectorOf;
+    SoundOf m_soundOf;
+    // звук последнего прослушанного: от него считается скачок к следующему
+    std::optional<Heard> m_lastHeard;
+    // тембр этой сессии, как вкус сессии: дослушанное тянет, скип отталкивает
+    std::optional<AudioFeatures::Timbre> m_soundSession;
+    qint64 m_soundAt = 0;
     // по songKey: вектор песни считается один раз на пространство
     mutable QHash<QString, std::optional<MusicSpace::Vector>> m_vectors;
 

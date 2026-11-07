@@ -96,6 +96,19 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
         });
         QTimer::singleShot(10000, m_sounds, [this]() { m_sounds->scan(PathProvider::getTrackCachePath()); });
     }
+    // Звук трека по его файлу в кэше. Трек с другой площадки мог ни разу не
+    // играть, а та же песня из Яндекса лежит в кэше: тогда звук берётся у неё
+    m_recommender->setSounds([this](const QVariantMap& t) -> std::optional<Recommender::Heard> {
+        auto heard = [this](const QString& id) -> std::optional<Recommender::Heard> {
+            if (id.isEmpty()) return std::nullopt;
+            QString key = CacheManager::fileKey(id);
+            std::optional<AudioFeatures::Sound> sound = m_sounds->sound(key);
+            if (!sound) return std::nullopt;
+            return Recommender::Heard{m_sounds->timbre(key), sound->bpm, sound->energy};
+        };
+        if (auto h = heard(t["id"].toString())) return h;
+        return heard(m_library->yandexId(TrackMatch::songKey(t)));
+    });
     connect(m_lastfm, &LastFmApi::keyRejected, this,
             [this]() { emit notice("Last.fm rejected the API key. Check it in Settings"); });
 

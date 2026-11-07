@@ -35,6 +35,71 @@ private slots:
         return out;
     }
 
+    static QStringList ids(const QVariantList& tracks) {
+        QStringList out;
+        for (const QVariant& t : tracks) out.append(t.toMap()["id"].toString());
+        return out;
+    }
+
+    static double value(const Ranker::Features& x, const QString& name) {
+        for (const auto& [n, v] : x) {
+            if (n == name) return v;
+        }
+        return -9;
+    }
+
+    // После трека на 120 BPM первым идёт самый близкий по темпу и энергии, а
+    // каждый следующий выбирается по переходу от предыдущего, а не от того,
+    // что играло: от 122 к 140 переход мягче, чем к 104, хотя от 120 наоборот
+    void soundMakesTransitionsSmooth() {
+        QHash<QString, Recommender::Heard> sounds{{"now", {std::nullopt, 120, 0.5}},
+                                                  {"close", {std::nullopt, 122, 0.55}},
+                                                  {"up", {std::nullopt, 140, 0.75}},
+                                                  {"down", {std::nullopt, 104, 0.3}}};
+        QVariantList candidates{track("down", "Artist 1"), track("up", "Artist 2"), track("close", "Artist 3")};
+
+        Recommender plain(dir.path());
+        QCOMPARE(ids(plain.rank(candidates, 3, false)).first(), QString("down"));
+
+        Recommender rec(dir.path());
+        rec.setSounds([sounds](const QVariantMap& t) -> std::optional<Recommender::Heard> {
+            auto it = sounds.constFind(t["id"].toString());
+            if (it == sounds.cend()) return std::nullopt;
+            return *it;
+        });
+        rec.listened(track("now", "Artist 0"), 200, 200, true);
+        Ranker::Features up = rec.features(track("up", "Artist 2"));
+        Ranker::Features down = rec.features(track("down", "Artist 1"));
+        QVERIFY(qAbs(value(up, "tempoJump") - std::log2(140.0 / 120) / 0.1) < 1e-9);
+        QVERIFY(qAbs(value(up, "energyJump") - 0.25) < 1e-9);
+        // от того, что играло, вниз ближе, чем вверх
+        Ranker model = rec.ranker();
+        QVERIFY(model.predict(down, false) > model.predict(up, false));
+        QCOMPARE(ids(rec.rank(candidates, 3, false)), QStringList({"close", "up", "down"}));
+        QCOMPARE(value(rec.features(track("unheard", "Artist 4")), "noSound"), 1.0);
+    }
+
+    // Дослушанное одного звучания тянет похожее по звучанию вверх, скип отталкивает
+    void soundOfTheSessionPullsAlike() {
+        AudioFeatures::Timbre warm{};
+        AudioFeatures::Timbre cold{};
+        warm[0] = 1;
+        cold[1] = 1;
+        QHash<QString, Recommender::Heard> sounds{
+            {"w1", {warm, 0, 0.5}}, {"w2", {warm, 0, 0.5}}, {"alike", {warm, 0, 0.5}}, {"unlike", {cold, 0, 0.5}}};
+        Recommender rec(dir.path());
+        rec.setSounds([sounds](const QVariantMap& t) -> std::optional<Recommender::Heard> {
+            auto it = sounds.constFind(t["id"].toString());
+            if (it == sounds.cend()) return std::nullopt;
+            return *it;
+        });
+        rec.listened(track("w1", "Artist 0"), 200, 200, true);
+        rec.listened(track("w2", "Artist 5"), 200, 200, true);
+        QVERIFY(value(rec.features(track("alike", "Artist 1")), "soundS") > 0.99);
+        QCOMPARE(ids(rec.rank({track("unlike", "Artist 2"), track("alike", "Artist 1")}, 2, false)).first(),
+                 QString("alike"));
+    }
+
     void finishedAndSkippedAreTold() {
         ListenEvent e;
         e.length = 200;

@@ -33,6 +33,10 @@ static const QHash<QString, QPair<double, double>>& priors() {
         {"cosS", {1.0, 2}},
         {"cosL", {0.5, 2}},
         {"noVec", {0.0, 2}},
+        {"soundS", {1.0, 2}},
+        {"tempoJump", {-0.4, 2}},
+        {"energyJump", {-1.5, 2}},
+        {"noSound", {0.0, 2}},
     };
     return p;
 }
