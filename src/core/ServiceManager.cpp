@@ -88,17 +88,21 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     connect(m_lastfm, &LastFmApi::keyRejected, this,
             [this]() { emit notice("Last.fm rejected the API key. Check it in Settings"); });
 
-    // Пространство пересобирается в фоне, когда база узнала новое и затихла:
-    // во время прогрева ответы идут потоком, пересобирать на каждый незачем
+    // Пространство пересобирается в фоне не чаще раза в 15 секунд, пока база
+    // узнаёт новое. Ждать тишины нельзя: при потоке ответов её может не быть
+    // вовсе, и карта не появилась бы никогда
     m_spaceBuild = new QFutureWatcher<MusicSpace>(this);
     m_spaceTimer = new QTimer(this);
     m_spaceTimer->setSingleShot(true);
     m_spaceTimer->setInterval(15000);
-    connect(m_knowledge, &KnowledgeBase::learned, m_spaceTimer, qOverload<>(&QTimer::start));
+    connect(m_knowledge, &KnowledgeBase::learned, this, [this]() {
+        if (!m_spaceTimer->isActive()) m_spaceTimer->start();
+    });
     connect(m_spaceTimer, &QTimer::timeout, this, &ServiceManager::rebuildSpace);
     connect(m_spaceBuild, &QFutureWatcher<MusicSpace>::finished, this, [this]() {
         auto space = std::make_shared<const MusicSpace>(m_spaceBuild->result());
-        if (space->isEmpty()) return;
+        m_spaceEmpty = space->isEmpty();
+        if (m_spaceEmpty) return;
         m_space = space;
         KnowledgeBase* knowledge = m_knowledge;
         m_recommender->setVectors(
@@ -108,6 +112,14 @@ ServiceManager::ServiceManager(NetworkManager* net, CacheManager* cache, QObject
     m_warmTimer->setSingleShot(true);
     m_warmTimer->setInterval(3000);
     connect(m_warmTimer, &QTimer::timeout, this, &ServiceManager::warmKnowledge);
+    // Прогрев не бросаем после сбоя сети: раз в десять минут доспрашиваем тех,
+    // о ком ответа нет или он устарел. Свежие ответы берутся из базы без запросов
+    m_warmRetry = new QTimer(this);
+    m_warmRetry->setInterval(10 * 60 * 1000);
+    connect(m_warmRetry, &QTimer::timeout, this, [this]() {
+        if (m_lastfm->isUsable() && m_knowledge->warmingLeft() == 0) warmKnowledge();
+    });
+    m_warmRetry->start();
     m_radio = new TasteRadio(m_knowledge, m_recommender, this);
     m_radio->setSpace([this]() { return m_space; });
     mixer->setTasteRadio(m_radio);
@@ -684,12 +696,35 @@ void ServiceManager::setLiked(const QVariantMap& track, bool liked) {
     if (!yandexId.isEmpty()) yandex->setLiked(yandexId, liked);
 }
 
+// Что сейчас с Last.fm, для строки под ключом в настройках. state одно из:
+// nokey, badkey, rejected, offline, learning, building, empty, ready
 QVariantMap ServiceManager::tasteStatus() const {
-    return {{"facts", m_knowledge->size()}, {"artists", m_space ? m_space->size() : 0}};
+    // три сбоя подряд это уже не случайность: Last.fm недоступен
+    static const int kOfflineAfter = 3;
+    const int facts = m_knowledge->size();
+    const int artists = m_space ? m_space->size() : 0;
+    QString state;
+    if (m_lastFmKey.isEmpty()) state = "nokey";
+    else if (!LastFmApi::looksLikeKey(m_lastFmKey)) state = "badkey";
+    else if (m_lastfm->isRejected()) state = "rejected";
+    else if (m_lastfm->failuresInRow() >= kOfflineAfter) state = "offline";
+    else if (artists > 0) state = "ready";
+    else if (facts == 0 || m_knowledge->warmingLeft() > 0) state = "learning";
+    else if (m_spaceEmpty) state = "empty";
+    else state = "building";
+    return {{"state", state},
+            {"facts", facts},
+            {"artists", artists},
+            {"length", int(m_lastFmKey.size())},
+            {"left", m_knowledge->warmingLeft()},
+            {"error", m_lastfm->lastError()}};
 }
 
 void ServiceManager::setLastFmKey(const QString& key) {
-    m_lastfm->setKey(key);
+    m_lastFmKey = key.trimmed();
+    // ключ не того вида даже не отправляем: ответ заранее известен, а строка в
+    // настройках сразу скажет, что с ним не так
+    m_lastfm->setKey(LastFmApi::looksLikeKey(m_lastFmKey) ? m_lastFmKey : QString());
     if (m_lastfm->isUsable()) m_warmTimer->start();
 }
 

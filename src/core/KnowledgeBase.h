@@ -48,6 +48,8 @@ public:
     // По очереди узнать похожих для этих артистов: из них складывается
     // пространство вкуса. Уже известные пропускаются
     void warm(const QStringList& artists);
+    // сколько артистов прогрева ещё впереди, вместе с тем, о ком спрашиваем сейчас
+    int warmingLeft() const { return int(m_warm.size()) + (m_warming ? 1 : 0); }
     bool hasSource() const;
     void setClock(std::function<qint64()> now) { m_now = std::move(now); }
 

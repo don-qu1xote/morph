@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
 
@@ -22,6 +23,13 @@ void LastFmApi::setKey(const QString& key) {
     if (trimmed == m_key) return;
     m_key = trimmed;
     m_rejected = false;
+    m_failures = 0;
+    m_lastError.clear();
+}
+
+bool LastFmApi::looksLikeKey(const QString& key) {
+    static const QRegularExpression hex("^[0-9a-fA-F]{32}$");
+    return hex.match(key.trimmed()).hasMatch();
 }
 
 // одиночный элемент Last.fm отдаёт объектом, а не массивом из одного
@@ -159,6 +167,13 @@ void LastFmApi::pump() {
                 emit keyRejected();
             }
             if (error == 29) m_pausedUntil = QDateTime::currentMSecsSinceEpoch() + kRateLimitPauseMs;
+            if (ok) {
+                m_failures = 0;
+                m_lastError.clear();
+            } else if (!m_rejected) {
+                ++m_failures;
+                m_lastError = error != 0 ? root["message"].toString() : reply->errorString();
+            }
             job.done(ok, ok && error == 0 ? job.parse(root) : QList<Item>());
             QTimer::singleShot(kGapMs, this, [this] {
                 m_busy = false;

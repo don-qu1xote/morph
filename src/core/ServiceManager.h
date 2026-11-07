@@ -186,6 +186,11 @@ private:
     QFutureWatcher<MusicSpace>* m_spaceBuild;
     QTimer* m_spaceTimer;
     QTimer* m_warmTimer;
+    QTimer* m_warmRetry;
+    // ключ как он сохранён в настройках, даже если он не того вида
+    QString m_lastFmKey;
+    // последняя сборка вышла пустой: похожих артистов пока слишком мало
+    bool m_spaceEmpty = false;
     void rebuildSpace();
     void warmKnowledge();
     // что слушал: про песню и её артиста узнать у Last.fm, пространство растёт с прослушиванием

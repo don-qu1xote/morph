@@ -2067,13 +2067,23 @@ ApplicationWindow {
                                             id: tasteStatusText
                                             property var status: ({})
                                             Layout.fillWidth: true
-                                            visible: lastFmKeyField.text.trim() !== ""
-                                            text: status.artists > 0 ? "Knows " + status.artists + " artists from " + status.facts + " Last.fm answers"
-                                                                     : "Learning from Last.fm: the map of your music appears in a minute or two"
-                                            color: systemTheme.subtext; font.family: mainFont.name; font.pixelSize: 11; wrapMode: Text.WordWrap
+                                            readonly property bool trouble: ["badkey", "rejected", "offline"].indexOf(status.state) >= 0
+                                            text: {
+                                                switch (status.state) {
+                                                case "nokey": return "Without a key the wave picks only from what Yandex, SoundCloud and YouTube suggest"
+                                                case "badkey": return "Last.fm keys are 32 letters and digits, this one has " + status.length + ". Copy it again from last.fm/api/accounts and press Enter"
+                                                case "rejected": return "Last.fm rejected this key. Copy it again from last.fm/api/accounts and press Enter"
+                                                case "offline": return "Can't reach Last.fm" + (status.error ? ": " + status.error : "") + ". Trying again in 10 minutes"
+                                                case "building": return "Got " + status.facts + " answers from Last.fm, building the map"
+                                                case "empty": return "Last.fm knows too little about your artists so far (" + status.facts + " answers). The map grows as you listen"
+                                                case "ready": return "Knows " + status.artists + " artists from " + status.facts + " Last.fm answers"
+                                                default: return "Asking Last.fm about your artists" + (status.left > 0 ? ", " + status.left + " to go" : "")
+                                                }
+                                            }
+                                            color: trouble ? systemTheme.accent : systemTheme.subtext; font.family: mainFont.name; font.pixelSize: 11; wrapMode: Text.WordWrap
                                             Timer {
                                                 interval: 3000; repeat: true; triggeredOnStart: true
-                                                running: tasteStatusText.visible
+                                                running: true
                                                 onTriggered: tasteStatusText.status = MorphServices.tasteStatus()
                                             }
                                         }

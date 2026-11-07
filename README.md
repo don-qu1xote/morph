@@ -164,9 +164,9 @@ The "SoundCloud Client ID" field accepts any of these:
 ### Last.fm API Key
 1. Sign in at [last.fm](https://www.last.fm) and open [last.fm/api/account/create](https://www.last.fm/api/account/create).
 2. Fill in any application name and description, leave the callback URL empty and press **Submit**.
-3. Copy the **API key** (32 letters and digits; the shared secret is not needed) into **Settings**, **RECOMMENDATIONS**, **Last.fm API Key**.
+3. Copy the **API key** (32 letters and digits; the shared secret is not needed) into **Settings**, **RECOMMENDATIONS**, **Last.fm API Key** and press Enter. Double-click the key on the Last.fm page to select it whole: a key missing its last character is the most common mistake. Your keys are listed at [last.fm/api/accounts](https://www.last.fm/api/accounts).
 
-morph asks Last.fm about your favourite artists in the background, at most four requests a second, and keeps the answers for a month in `knowledge.db`.
+morph asks Last.fm about your favourite artists in the background, at most four requests a second, and keeps the answers for a month in `knowledge.db`. The line under the key says what is going on: how many artists are left to ask, how many morph already knows, or what is wrong (a key of the wrong length, a key Last.fm rejected, no connection to Last.fm). After a network failure morph asks again every ten minutes.
 
 ### Phone
 1. In **Settings**, turn on **Phone Server** under PHONE. It shows the server address, the user `morph` and a password.

@@ -46,6 +46,19 @@ private slots:
         tools.add("yt-dlp", "exit 0\n");
     }
 
+    // ключ не того вида в Last.fm не уходит, а строка в настройках говорит, что с ним
+    void lastFmStatusSaysWhatIsWrong() {
+        NetworkManager net;
+        CacheManager cache(&net);
+        ServiceManager services(&net, &cache);
+        QCOMPARE(services.tasteStatus()["state"].toString(), QString("nokey"));
+        services.setLastFmKey("0123456789abcdef0123456789abcde");
+        QCOMPARE(services.tasteStatus()["state"].toString(), QString("badkey"));
+        QCOMPARE(services.tasteStatus()["length"].toInt(), 31);
+        services.setLastFmKey("");
+        QCOMPARE(services.tasteStatus()["state"].toString(), QString("nokey"));
+    }
+
     void unsupportedImportReportsError() {
         NetworkManager net;
         CacheManager cache(&net);

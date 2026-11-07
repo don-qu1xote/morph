@@ -36,6 +36,13 @@ public:
     bool hasKey() const { return !m_key.isEmpty(); }
     // ключ есть и Last.fm его не отклонил
     bool isUsable() const { return !m_key.isEmpty() && !m_rejected; }
+    bool isRejected() const { return m_rejected; }
+    // Ключ Last.fm это 32 шестнадцатеричных символа. При копировании легко
+    // потерять крайний, а Last.fm на это ответит только «Invalid API key»
+    static bool looksLikeKey(const QString& key);
+    // сколько запросов подряд не дошло или вернулось с ошибкой, и текст последней
+    int failuresInRow() const { return m_failures; }
+    QString lastError() const { return m_lastError; }
 
     void similarTracks(const QString& artist, const QString& title, int limit, Done done);
     void similarArtists(const QString& artist, int limit, Done done);
@@ -64,6 +71,8 @@ private:
     bool m_busy = false;
     bool m_rejected = false;
     qint64 m_pausedUntil = 0;
+    int m_failures = 0;
+    QString m_lastError;
 };
 
 #endif

@@ -180,6 +180,37 @@ private slots:
         QCOMPARE(wait([&](auto done) { base.similarArtists("Saluki", done); }).size(), 1);
     }
 
+    // Что пошло не так, видно снаружи: вид ключа, отказ, сбои подряд и текст
+    // последнего. Без этого настройки час писали «Learning» при ключе в 31 символ
+    void apiTellsWhatWentWrong() {
+        QVERIFY(LastFmApi::looksLikeKey("0123456789abcdef0123456789ABCDEF"));
+        QVERIFY(!LastFmApi::looksLikeKey("0123456789abcdef0123456789abcde"));
+        QVERIFY(!LastFmApi::looksLikeKey("0123456789abcdef0123456789abcdez"));
+
+        NetworkManager net;
+        LastFmApi api(&net);
+        api.setKey("key");
+        KnowledgeBase base(&api, dir.filePath("knowledge.db"));
+        lastfm.reset();
+        lastfm.on("GET", "/2.0/", [](const HttpRequest&) { return HttpResponse{503, "busy"}; });
+        wait([&](auto done) { base.similarArtists("Zamay", done); });
+        wait([&](auto done) { base.similarArtists("Saluki", done); });
+        QCOMPARE(api.failuresInRow(), 2);
+        QVERIFY(!api.lastError().isEmpty());
+        QVERIFY(!api.isRejected());
+
+        lastfm.reset();
+        serve();
+        wait([&](auto done) { base.similarArtists("Pyrokinesis", done); });
+        QCOMPARE(api.failuresInRow(), 0);
+        QVERIFY(api.lastError().isEmpty());
+
+        api.setKey("bad");
+        wait([&](auto done) { base.similarArtists("Markul", done); });
+        QVERIFY(api.isRejected());
+        QCOMPARE(api.failuresInRow(), 0);
+    }
+
     // прогрев идёт по одному и с паузой: четыре запроса в секунду, не больше
     void warmGoesOneByOneAndSkipsKnown() {
         NetworkManager net;
