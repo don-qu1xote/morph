@@ -169,9 +169,10 @@ private slots:
         QVariantList yandex;
         for (int i = 0; i < 6; ++i) yandex.append(track("Yandex Artist " + QString::number(i), "Song"));
         mixer.addBatch("Yandex", yandex);
-        // сид и два трека партии: три вопроса к Last.fm с паузой между ними
+        // Сид и два трека партии: три вопроса к Last.fm с паузой между ними.
+        // Ждём не запросы, а ответы: на медленной машине третий может быть ещё в пути
         QVERIFY(lastfm.waitFor("/2.0/", 3));
-        QTest::qWait(100);
+        QTRY_VERIFY_WITH_TIMEOUT(base.size() >= 3, 5000);
         mixer.addBatch("Yandex", yandex);
         QCOMPARE(wave.count(), 2);
         int taste = 0;

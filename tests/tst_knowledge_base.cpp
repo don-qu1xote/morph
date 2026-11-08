@@ -229,7 +229,8 @@ private slots:
         QStringList asked;
         for (const HttpRequest& r : calls("artist.getsimilar")) asked.append(r.query.queryItemValue("artist"));
         QCOMPARE(asked, QStringList({"Saluki", "Pyrokinesis", "Markul"}));
-        QCOMPARE(base.allSimilarArtists().size(), 4);
+        // сервер получил третий запрос, но ответ на него ещё может быть в пути
+        QTRY_COMPARE_WITH_TIMEOUT(base.allSimilarArtists().size(), 4, 5000);
     }
 };
 
